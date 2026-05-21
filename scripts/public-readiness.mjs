@@ -3,7 +3,7 @@ import { join, relative } from "node:path";
 import { spawnSync } from "node:child_process";
 
 const root = process.cwd();
-const blockedDirs = new Set([".git", "node_modules", "dist", ".tmp"]);
+const blockedDirs = new Set([".git", ".worktrees", "node_modules", "dist", ".tmp"]);
 const blockedFiles = new Set(["package-lock.json", "public-readiness.mjs"]);
 const textExtensions = new Set([
   ".css",
@@ -65,8 +65,16 @@ function runGit(args) {
   return spawnSync("git", args, { cwd: root, encoding: "utf8" });
 }
 
+function branchCommitRange() {
+  for (const baseRef of ["origin/main", "main"]) {
+    const base = runGit(["merge-base", baseRef, "HEAD"]);
+    if (base.status === 0 && base.stdout.trim()) return `${base.stdout.trim()}..HEAD`;
+  }
+  return "HEAD";
+}
+
 function scanHistory() {
-  const commits = runGit(["log", "--all", "--format=%H"]);
+  const commits = runGit(["log", branchCommitRange(), "--format=%H"]);
   if (commits.status !== 0) {
     fail(`could not read git history: ${commits.stderr.trim()}`);
     return;
