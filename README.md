@@ -7,7 +7,8 @@ CLI, and operator dashboard.
 
 Flow is a standalone package that can be plugged into multiple host repos. The
 consuming architecture owns its `.flow/config.yaml`; Flow owns the reusable
-runtime. See [Host Repo Integration](docs/host-integration.md).
+runtime and exposes optional plugin surfaces for agent SDKs, executors, and
+provider adapters. See [Host Repo Integration](docs/host-integration.md).
 
 ## Runtime Shape
 
@@ -16,8 +17,8 @@ runtime. See [Host Repo Integration](docs/host-integration.md).
 - **Work Runtime** is the in-process library behind the CLI. It validates work,
   reconciles issue tracker, Git, code review, and ledger state, runs readiness
   checks, and records lifecycle state.
-- **Executors** are execution modes: local live agent thread or hands-off
-  background run.
+- **Executors** are pluggable execution modes: local live agent thread,
+  background CLI, agent SDK, or host-provided adapter.
 - **Ledger** stores durable work envelopes, events, executor progress, results,
   evidence, and handoff state.
 
@@ -51,7 +52,8 @@ examples/.flow/config.yaml
 With a sibling checkout:
 
 ```bash
-FLOW_PROJECT_ROOT=/path/to/host-repo /path/to/flow/bin/flow queue
+cd /path/to/host-repo
+/path/to/flow/bin/flow queue
 ```
 
 With Flow installed as a host repo dependency after package publication:
@@ -65,13 +67,6 @@ npx flow-dashboard
 ## Run Flow Against A Project
 
 Run Flow from the project repository that contains `.flow/config.yaml`:
-
-```bash
-FLOW_PROJECT_ROOT=/path/to/project /path/to/flow/bin/flow queue
-```
-
-If `FLOW_PROJECT_ROOT` is omitted, Flow uses the current working directory as
-the project root.
 
 ```bash
 cd /path/to/project
@@ -102,6 +97,19 @@ lower-level runtime method such as `createIssue` or `routeIssue`.
 Use `flow complete-worker` when the current local agent thread has already done
 the Worker assignment. Flow will claim the pending Worker job for the live-thread
 executor, record the structured result, and stop asking for a duplicate Worker.
+
+Background executor settings belong in `.flow/config.yaml` under
+`runtime.worker`. Treat `.flow/config.yaml` like Kubernetes-style declarative
+configuration: it owns durable behavior. Environment variables may still be used
+for process context, local launch mechanics, or secret injection where an
+adapter requires them, but they should not define workflow topology or policy.
+
+Most projects only need topology, issue tracker, collaboration, source control,
+and ledger config. Flow has permissive built-in defaults for work types,
+executors, worker timeouts, session naming, and dashboard host/port. The default
+workflow is designed to guide the live agent thread through Flow with minimal
+capability gating. Configure `workTypes`, `executors`, or `runtime.worker` only
+when a host needs to replace the default workflow categories or worker adapter.
 
 ## State
 

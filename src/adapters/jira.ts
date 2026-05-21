@@ -31,6 +31,8 @@ export interface JiraAdapterOptions {
   cwd: string;
   siteUrl?: string;
   projectKey?: string;
+  activeQueueJql?: string;
+  backlogQueueJql?: string;
   email?: string;
   apiToken?: string;
 }
@@ -72,15 +74,19 @@ export class AcliJiraAdapter implements IssueTrackerProvider {
   private readonly cwd: string;
   private readonly siteUrl: string;
   private readonly projectKey?: string;
+  private readonly activeQueueJql?: string;
+  private readonly backlogQueueJql?: string;
   private readonly email?: string;
   private readonly apiToken?: string;
 
   constructor(options: JiraAdapterOptions) {
     this.cwd = options.cwd;
-    this.siteUrl = (options.siteUrl ?? process.env.ATLASSIAN_SITE_URL ?? process.env.FLOW_JIRA_SITE_URL ?? defaultJiraSiteUrl).replace(/\/+$/, "");
-    this.projectKey = options.projectKey ?? process.env.FLOW_JIRA_PROJECT_KEY ?? process.env.JIRA_PROJECT_KEY;
-    this.email = options.email ?? process.env.ATLASSIAN_EMAIL;
-    this.apiToken = options.apiToken ?? process.env.ATLASSIAN_API_TOKEN;
+    this.siteUrl = (options.siteUrl ?? defaultJiraSiteUrl).replace(/\/+$/, "");
+    this.projectKey = options.projectKey;
+    this.activeQueueJql = options.activeQueueJql;
+    this.backlogQueueJql = options.backlogQueueJql;
+    this.email = options.email;
+    this.apiToken = options.apiToken;
   }
 
   async getIssue(ref: string): Promise<UnifiedIssue> {
@@ -146,7 +152,7 @@ export class AcliJiraAdapter implements IssueTrackerProvider {
           "workitem",
           "search",
           "--jql",
-          currentUserOpenSprintJql(this.projectKey),
+          this.activeQueueJql ?? currentUserOpenSprintJql(this.projectKey),
           "--fields",
           "key,summary,issuetype,status,assignee,labels",
           "--limit",
@@ -171,7 +177,7 @@ export class AcliJiraAdapter implements IssueTrackerProvider {
           "workitem",
           "search",
           "--jql",
-          currentUserBacklogJql(this.projectKey),
+          this.backlogQueueJql ?? currentUserBacklogJql(this.projectKey),
           "--fields",
           "key,summary,issuetype,status,assignee,labels",
           "--limit",
@@ -287,12 +293,12 @@ export class AcliJiraAdapter implements IssueTrackerProvider {
 
   private requireProjectKey(): string {
     if (this.projectKey) return this.projectKey;
-    throw new Error("Jira project key is required. Configure issueTracker.projectKey, pass projectKey, or set FLOW_JIRA_PROJECT_KEY.");
+    throw new Error("Jira project key is required. Configure issueTracker.projectKey in .flow/config.yaml or pass projectKey.");
   }
 
   private async jiraSoftwareRequest(path: string, init: RequestInit = {}): Promise<unknown> {
     if (!this.email || !this.apiToken) {
-      throw new Error("Jira REST auth is not configured. Set ATLASSIAN_EMAIL and ATLASSIAN_API_TOKEN.");
+      throw new Error("Jira REST auth is not configured. Configure issueTracker.email and issueTracker.apiToken in .flow/config.yaml.");
     }
     const response = await withPerfLog(`jira rest ${init.method ?? "GET"} ${path}`, () =>
       fetch(`${this.siteUrl}${path}`, {
@@ -324,8 +330,7 @@ async function withPerfLog<T>(label: string, operation: () => Promise<T>, defaul
     return await operation();
   } finally {
     const durationMs = Date.now() - startedAt;
-    const thresholdMs = Number(process.env.FLOW_PERF_CLI_THRESHOLD_MS ?? defaultThresholdMs);
-    if (process.env.FLOW_PERF_LOG === "1" || durationMs >= thresholdMs) {
+    if (durationMs >= defaultThresholdMs) {
       console.error(`[flow perf] ${label} duration_ms=${durationMs}`);
     }
   }

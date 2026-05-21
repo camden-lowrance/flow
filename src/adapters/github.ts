@@ -82,7 +82,7 @@ export class GhGitHubAdapter implements CodeCollaborationProvider {
 
   constructor(options: GitHubAdapterOptions) {
     this.cwd = options.cwd;
-    this.owner = options.owner ?? process.env.FLOW_GITHUB_OWNER ?? process.env.GITHUB_OWNER ?? "";
+    this.owner = options.owner ?? "";
   }
 
   async findCodeReviews(repo: string, branchName?: string): Promise<UnifiedCodeReview[]> {
@@ -137,7 +137,7 @@ export class GhGitHubAdapter implements CodeCollaborationProvider {
   private repoSpecifier(repo: string): string {
     if (repo.includes("/")) return repo;
     if (!this.owner) {
-      throw new Error("GitHub owner is required. Configure collaboration.owner, FLOW_GITHUB_OWNER, or GITHUB_OWNER.");
+      throw new Error("GitHub owner is required. Configure collaboration.owner in .flow/config.yaml.");
     }
     return `${this.owner}/${repo}`;
   }
@@ -277,7 +277,7 @@ export class GhGitHubIssueTrackerAdapter implements IssueTrackerProvider {
 
   constructor(options: GitHubIssueTrackerOptions) {
     this.cwd = options.cwd;
-    this.owner = options.owner ?? process.env.FLOW_GITHUB_OWNER ?? process.env.GITHUB_OWNER ?? "";
+    this.owner = options.owner ?? "";
     this.repo = options.repo;
     this.assignee = options.assignee ?? "@me";
     this.activeLabels = options.activeLabels ?? [];
@@ -399,7 +399,7 @@ export class GhGitHubIssueTrackerAdapter implements IssueTrackerProvider {
   private repoSpecifier(): string {
     if (this.repo.includes("/")) return this.repo;
     if (!this.owner) {
-      throw new Error("GitHub owner is required. Configure issueTracker.owner, collaboration.owner, FLOW_GITHUB_OWNER, or GITHUB_OWNER.");
+      throw new Error("GitHub owner is required. Configure issueTracker.owner or collaboration.owner in .flow/config.yaml.");
     }
     return `${this.owner}/${this.repo}`;
   }
@@ -411,8 +411,7 @@ async function withPerfLog<T>(label: string, operation: () => Promise<T>, defaul
     return await operation();
   } finally {
     const durationMs = Date.now() - startedAt;
-    const thresholdMs = Number(process.env.FLOW_PERF_CLI_THRESHOLD_MS ?? defaultThresholdMs);
-    if (process.env.FLOW_PERF_LOG === "1" || durationMs >= thresholdMs) {
+    if (durationMs >= defaultThresholdMs) {
       console.error(`[flow perf] ${label} duration_ms=${durationMs}`);
     }
   }

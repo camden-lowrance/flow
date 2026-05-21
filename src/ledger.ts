@@ -309,17 +309,14 @@ export interface BeadsWorkflowLedgerOptions {
 
 export interface WorkflowLedgerFactoryOptions {
   cwd: string;
-  env?: NodeJS.ProcessEnv;
   adapter?: string;
   path?: string;
 }
 
 export function createWorkflowLedger(options: WorkflowLedgerFactoryOptions): WorkflowLedger {
-  const env = options.env ?? process.env;
-  const adapter = options.adapter ?? env.FLOW_LEDGER_ADAPTER;
-  if (adapter === "beads") return new BeadsWorkflowLedger({ cwd: options.cwd });
+  if (options.adapter === "beads") return new BeadsWorkflowLedger({ cwd: options.cwd });
   return new JsonlWorkflowLedger({
-    path: options.path ?? env.FLOW_WORKFLOW_LEDGER_PATH ?? flowWorkflowLedgerPath(options.cwd),
+    path: options.path ?? flowWorkflowLedgerPath(options.cwd),
   });
 }
 
@@ -396,9 +393,7 @@ export class MirroredWorkflowLedger implements WorkflowLedger {
     try {
       await withPerfLog(`mirror.${label}`, operation, 1000);
     } catch (error) {
-      if (truthyMetadata(process.env.FLOW_MIRROR_DEBUG)) {
-        console.error(`Flow mirror failed: ${errorMessage(error)}`);
-      }
+      console.error(`Flow mirror failed: ${errorMessage(error)}`);
     }
   }
 }
@@ -636,8 +631,7 @@ async function withPerfLog<T>(label: string, operation: () => Promise<T>, defaul
 }
 
 function shouldPerfLog(durationMs: number, defaultThresholdMs: number): boolean {
-  const thresholdMs = Number(process.env.FLOW_PERF_CLI_THRESHOLD_MS ?? defaultThresholdMs);
-  return process.env.FLOW_PERF_LOG === "1" || durationMs >= thresholdMs;
+  return durationMs >= defaultThresholdMs;
 }
 
 function safeCommandArgs(args: string[]): string {

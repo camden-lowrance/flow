@@ -13,6 +13,7 @@ import {
   FlowWorkRuntime,
   GhGitHubAdapter,
   IssueStateValue,
+  WorkerExecutorValue,
   flowLayout,
   flowRuntimePath,
   loadFlowConfig,
@@ -25,11 +26,10 @@ import {
   workerExecutorValues,
 } from "./index.js";
 import { GhGitHubIssueTrackerAdapter } from "./adapters/github.js";
-import { loadFlowEnv, repoRoot } from "./flow-runtime.js";
+import { repoRoot } from "./flow-runtime.js";
 
-loadFlowEnv();
-
-const defaultSessionId = process.env.FLOW_SESSION_ID ?? "cli";
+const flowConfig = await loadFlowConfig({ projectRoot: repoRoot });
+const defaultSessionId = configString(flowConfig?.runtime, "defaultSessionId") ?? "cli";
 const rawWorkRuntimeMethods = [
   "inspectDashboardQueue",
   "inspectQueue",
@@ -55,13 +55,19 @@ const rawWorkRuntimeMethods = [
   "summarizeHandoff",
   "observeFlowSubject",
 ];
-const flowConfig = await loadFlowConfig({ projectRoot: repoRoot });
 const runtime = new FlowWorkRuntime({
   store: new FlowStore({ root: flowRuntimePath(repoRoot) }),
-  ledger: createWorkflowLedger({ cwd: repoRoot }),
+  ledger: createWorkflowLedger({
+    cwd: repoRoot,
+    adapter: configString(flowConfig?.ledger, "type"),
+    path: configString(flowConfig?.runtime, "workflowLedgerPath"),
+  }),
   github: new GhGitHubAdapter({ cwd: repoRoot, owner: configString(flowConfig?.collaboration, "owner") }),
   issueTracker: createIssueTracker(),
   defaultJiraProjectKey: configString(flowConfig?.issueTracker, "projectKey"),
+  autoflowBlockedThreshold: flowConfig?.runtime?.autoflowBlockedThreshold,
+  workerTimeoutMs: flowConfig?.runtime?.worker?.timeoutMs,
+  debugEnabled: flowConfig?.runtime?.debug,
   ...(flowConfig
     ? {
       topology: configToProjectTopology(flowConfig),
@@ -222,7 +228,7 @@ program
     await runtime.selectIssue(options.session, await queueIssue(issueRef));
     writeJson(await runtime.autoFlowIssue(
       options.session,
-      createDefaultWorkerSpawner({ flowRoot: repoRoot }),
+      createConfiguredWorkerSpawner(),
       {
         autoPrepareWorkspace: true,
         autoApproveWorker: true,
@@ -370,6 +376,28 @@ function runtimeGithub(): GhGitHubAdapter {
   return new GhGitHubAdapter({ cwd: repoRoot, owner: configString(flowConfig?.collaboration, "owner") });
 }
 
+function createConfiguredWorkerSpawner() {
+  const worker = flowConfig?.runtime?.worker;
+  return createDefaultWorkerSpawner({
+    flowRoot: repoRoot,
+    executor: parseConfiguredWorkerExecutor(worker?.executor),
+    provider: worker?.provider,
+    model: worker?.model,
+    timeoutMs: worker?.timeoutMs,
+    sdkModulePath: worker?.sdkModulePath,
+    extensionPath: worker?.extensionPath,
+    agentDir: worker?.agentDir,
+    command: worker?.codexCommand,
+  });
+}
+
+function parseConfiguredWorkerExecutor(value: unknown): WorkerExecutor | undefined {
+  if (value === WorkerExecutorValue.Pi || value === WorkerExecutorValue.Codex || value === WorkerExecutorValue.LiveAgentThread) {
+    return value;
+  }
+  return undefined;
+}
+
 function parsePullRequestRef(ref: string): { repo: string; number: number } | undefined {
   const match = /^https:\/\/github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)(?:[/?#].*)?$/i.exec(ref.trim());
   if (!match) return undefined;
@@ -515,7 +543,7 @@ async function dispatch(method: string, params: Record<string, unknown>): Promis
         typeof params.issueRef === "string" ? params.issueRef : undefined,
       );
     case "autoFlowIssue":
-      return runtime.autoFlowIssue(String(params.sessionId ?? defaultSessionId), createDefaultWorkerSpawner({ flowRoot: repoRoot }), params.options ?? {});
+      return runtime.autoFlowIssue(String(params.sessionId ?? defaultSessionId), createConfiguredWorkerSpawner(), params.options ?? {});
     case "resetAutoflowState":
       return runtime.resetAutoflowState(String(params.sessionId ?? defaultSessionId), asStringArray(params.issueRefs));
     case "refreshReviewState":
@@ -634,6 +662,10 @@ function createIssueTracker() {
     cwd: repoRoot,
     siteUrl: configString(issueTracker, "siteUrl"),
     projectKey: configString(issueTracker, "projectKey"),
+    activeQueueJql: configString(issueTracker, "activeQueueJql"),
+    backlogQueueJql: configString(issueTracker, "backlogQueueJql"),
+    email: configString(issueTracker, "email"),
+    apiToken: configString(issueTracker, "apiToken"),
   });
 }
 

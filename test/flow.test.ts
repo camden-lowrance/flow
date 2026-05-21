@@ -33,7 +33,7 @@ import {
 } from "../src/index.js";
 import type { ProjectTopology } from "../src/project-topology.js";
 import { parseGitHubIssues, parsePullRequests } from "../src/adapters/github.js";
-import { currentUserOpenSprintJql, parseJiraCommentUrl, parseJiraIssue, parseJiraSearch } from "../src/adapters/jira.js";
+import { currentUserBacklogJql, currentUserOpenSprintJql, parseJiraCommentUrl, parseJiraIssue, parseJiraSearch } from "../src/adapters/jira.js";
 
 const legacyHostConfig = flowConfigSchema.parse({
   version: "1",
@@ -71,8 +71,6 @@ function testWorkRuntime(options: ConstructorParameters<typeof FlowWorkRuntime>[
   });
 }
 
-process.env.FLOW_GITHUB_OWNER = "ExampleOrg";
-
 function configString(config: Record<string, unknown> | undefined, key: string): string | undefined {
   const value = config?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
@@ -88,7 +86,6 @@ test("Typed work contracts and registry validate supported jobs", () => {
     workType: "flow.implement",
     status: "queued",
     input: { prompt: "fix it" },
-    requiredCapabilities: ["code.edit", "test.run"],
     createdAt: now,
     updatedAt: now,
   });
@@ -104,6 +101,7 @@ test("Typed work contracts and registry validate supported jobs", () => {
   });
 
   assert.equal(workTypes.get(job.workType)?.outputType, "worker_result");
+  assert.equal(workTypes.executorCanRun("live_agent_thread", job.workType, job.requiredCapabilities), true);
   assert.equal(workTypes.executorCanRun("pi_worker", job.workType, job.requiredCapabilities), true);
   assert.equal(workTypes.executorCanRun("pi_worker", "flow.prepare_workspace"), false);
   assert.equal(result.jobId, job.id);
@@ -2013,7 +2011,7 @@ test("Mirrored workflow ledger keeps primary authoritative when mirror fails", a
 
 test("Flow workflow ledger persists records to local JSONL by default", async () => {
   const root = await mkdtemp(join(tmpdir(), "flow-ledger-"));
-  const ledger = createWorkflowLedger({ cwd: root, env: {} as NodeJS.ProcessEnv });
+  const ledger = createWorkflowLedger({ cwd: root });
   await ledger.writeIssue({
     ref: "ISSUE-90",
     title: "Native ledger",
@@ -2033,7 +2031,7 @@ test("Flow workflow ledger persists records to local JSONL by default", async ()
     completedAt: nowIso(),
   });
 
-  const reloaded = createWorkflowLedger({ cwd: root, env: {} as NodeJS.ProcessEnv });
+  const reloaded = createWorkflowLedger({ cwd: root });
   assert.equal((await reloaded.readIssue("ISSUE-90"))?.title, "Native ledger");
   assert.equal((await reloaded.listWorkerResults("ISSUE-90"))[0]?.taskId, "worker-90");
   const projection = JSON.parse(await readFile(flowIssueProjectionPath(root, "ISSUE-90"), "utf8"));
@@ -2750,25 +2748,19 @@ test("Work Runtime resets Autoflow attempt state through Flow", async () => {
   assert.equal(reset.metadata["workflow.autoflow.current_action_started_at"], "");
 });
 
-test("Default Worker spawner falls back to Codex when Pi credentials are unavailable", () => {
-  const env = { PATH: "/usr/bin" } as NodeJS.ProcessEnv;
-
+test("Default Worker spawner uses configured Codex executor", () => {
   const spawner = createDefaultWorkerSpawner({
-    env,
+    executor: "codex",
     flowRoot: "/repo",
-    codexAvailable: () => true,
   });
 
   assert.equal(spawner instanceof CodexWorkerSpawner, true);
 });
 
-test("Default Worker spawner honors explicit Pi executor selection", () => {
-  const env = { FLOW_WORKER_EXECUTOR: "pi" } as NodeJS.ProcessEnv;
-
+test("Default Worker spawner uses configured agent SDK executor", () => {
   const spawner = createDefaultWorkerSpawner({
-    env,
+    executor: "pi",
     flowRoot: "/repo",
-    codexAvailable: () => true,
   });
 
   assert.equal(spawner instanceof PiWorkerSpawner, true);
@@ -4301,6 +4293,13 @@ test("Jira adapter queue query includes active dev and review work only", () => 
   assert.equal(
     currentUserOpenSprintJql(configString(legacyHostConfig.issueTracker, "projectKey")),
     "project = ISSUE AND assignee = currentUser() AND sprint in openSprints() AND status in ('Ready for Dev', 'In Progress', 'In Review')",
+  );
+});
+
+test("Jira adapter backlog query includes default planning statuses", () => {
+  assert.equal(
+    currentUserBacklogJql(configString(legacyHostConfig.issueTracker, "projectKey")),
+    "project = ISSUE AND assignee = currentUser() AND sprint is EMPTY AND status in ('Ready for Dev', 'To Do', 'Selected for Development') ORDER BY updated DESC",
   );
 });
 
