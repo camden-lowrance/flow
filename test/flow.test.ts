@@ -558,6 +558,38 @@ test("Readiness blocks successful Worker output until handoff records exist", ()
   );
 });
 
+test("Readiness supports local no-PR workflows when code review is disabled", () => {
+  const assessment = assessIssue({
+    issue: {
+      ref: "LOCAL-11",
+      title: "Needs local closeout",
+      repoKeys: ["app_api"],
+      state: "ready_to_run",
+      metadata: {},
+    },
+    workerResults: [
+      {
+        taskId: "worker-local-11",
+        issueRef: "LOCAL-11",
+        repoKey: "app_api",
+        status: "succeeded",
+        summary: "Changed code",
+        changedFiles: ["worker/src/example.py"],
+        testsRun: ["pytest"],
+        blockers: [],
+        completedAt: nowIso(),
+      },
+    ],
+    evidenceRecorded: true,
+    documentationRecorded: true,
+    codeReviewRequired: false,
+  });
+
+  assert.equal(assessment.readyToAdvance, true);
+  assert.equal(assessment.reviewReady, true);
+  assert.equal(assessment.findings.some((finding) => finding.summary === "Pull request is missing."), false);
+});
+
 test("Readiness treats retryable Worker timeout after success as warning", () => {
   const assessment = assessIssue({
     issue: {
@@ -1373,6 +1405,51 @@ test("Work Runtime adopts an existing worktree into issue metadata", async () =>
   assert.equal(adopted.metadata["workflow.repos.app_api.head_sha"], "adopted-sha");
   assert.equal(adopted.metadata["workflow.repos.app_api.dirty"], true);
   assert.notEqual(advanced.message, "Prepare workspace for ISSUE-3026 in app_api.");
+});
+
+test("Work Runtime adopts a branch as local-only Flow work", async () => {
+  const root = await mkdtemp(join(tmpdir(), "flow-pi-"));
+  const ledger = new MemoryWorkflowLedger();
+  const workRuntime = testWorkRuntime({
+    store: new FlowStore({ root }),
+    ledger,
+    projectRoot: "/repo",
+    git: {
+      async inspect(repoPath) {
+        assert.equal(repoPath, "/repo/public-api");
+        return {
+          branch: "codex/spike-local-work",
+          headSha: "branch-sha",
+          dirty: false,
+          entries: [],
+          worktreePath: "/repo/public-api",
+        };
+      },
+    },
+    jira: {
+      async viewIssue() {
+        throw new Error("external issue tracker should not be read for branch adoption");
+      },
+    },
+  });
+  const session = await workRuntime.createSession("session-adopt-branch");
+
+  const adopted = await workRuntime.adoptBranch(session.id, {
+    repoKey: "public_api",
+    worktreePath: "/repo/public-api",
+    summary: "Spike local work",
+  });
+  const selected = await workRuntime.summarizeHandoff(session.id);
+
+  assert.equal(adopted.ref, "FLOW-1");
+  assert.equal(adopted.title, "Spike local work");
+  assert.deepEqual(adopted.repoKeys, ["public_api"]);
+  assert.equal(adopted.metadata["workflow.issue.origin"], "branch");
+  assert.equal(adopted.metadata["workflow.external.issue.status"], "unpublished");
+  assert.equal(adopted.metadata["workflow.external.code_review.status"], "unpublished");
+  assert.equal(adopted.metadata["workflow.repos.public_api.branch"], "codex/spike-local-work");
+  assert.equal(adopted.metadata["workflow.repos.public_api.head_sha"], "branch-sha");
+  assert.match(selected, /FLOW-1: Spike local work/);
 });
 
 test("Work Runtime inspects queue from workflow ledger", async () => {
@@ -3704,15 +3781,42 @@ test("Work Runtime doctor reports visibility, blockers, and next action", async 
   assert.equal(result.status, "blocked");
   assert.deepEqual(result.issue.repoKeys, ["public_api"]);
   assert.equal(result.visibility.repoRouting, true);
-  assert.equal(result.visibility.pullRequest, true);
+  assert.equal(result.visibility.codeReview, true);
   assert.equal(result.visibility.preparedWorktree, false);
-  assert.equal(result.review?.prUrl, "https://github.com/ExampleOrg/public-api/pull/3026");
+  assert.equal(result.codeReview?.prUrl, "https://github.com/ExampleOrg/public-api/pull/3026");
   assert.equal(result.nextAction.type, "adopt_workspace");
   assert.match(result.nextAction.command ?? "", /flow adopt-workspace ISSUE-15397 --repo public_api/);
   assert.equal(
     result.findings.some((finding) => finding.summary === "Auto review has must-fix feedback."),
     true,
   );
+});
+
+test("Work Runtime doctor treats no PR as healthy when collaboration is disabled", async () => {
+  const root = await mkdtemp(join(tmpdir(), "flow-pi-"));
+  const ledger = new MemoryWorkflowLedger();
+  const workRuntime = testWorkRuntime({
+    store: new FlowStore({ root }),
+    ledger,
+    collaboration: new NoopCodeCollaborationAdapter(),
+  });
+  const session = await workRuntime.createSession("session-doctor-no-pr");
+  await workRuntime.selectIssue(session.id, {
+    ref: "LOCAL-1",
+    title: "Local-only work",
+    repoKeys: ["public_api"],
+    state: "selected",
+    metadata: {
+      "workflow.repos.public_api.worktree_path": "/repo/public-api/.worktrees/local-only-work",
+    },
+  });
+
+  const result = await workRuntime.diagnoseIssue(session.id);
+
+  assert.equal(result.status, "ok");
+  assert.equal(result.visibility.codeReview, false);
+  assert.equal(result.visibility.codeReviewRequired, false);
+  assert.equal(result.nextAction.type, "advance");
 });
 
 test("Work Runtime doctor prioritizes present review comments before approval wait", async () => {

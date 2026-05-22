@@ -104,6 +104,16 @@ In that shape, the CLI creates local issue refs and the Flow ledger is the
 durable issue/workflow record. Git remains available for local branch and
 worktree inspection, but no hosted code review provider is required.
 
+When the branch already exists and the work should stay local, use:
+
+```bash
+flow adopt-branch --summary "Spike checkout workflow" --repo main
+```
+
+That records the branch/worktree as a local Flow item without publishing an
+issue or code review. Hosted systems can be added later as checkpoint
+projections.
+
 Most hosts should not configure `workTypes` or `executors`. Flow ships
 permissive defaults for prepare, implement, remediate, verify, live-thread
 execution, and background execution. The default workflow is intentionally wide

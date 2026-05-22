@@ -86,6 +86,7 @@ flow manifest
 flow bootstrap
 flow queue
 flow create-issue --type Bug --summary "Fix provider parquet schema" --description "Follow-up from ISSUE-15461." --repo app_api
+flow adopt-branch --summary "Spike provider parquet schema" --repo app_api
 flow select ISSUE-123 --session codex-issue-123
 flow advance ISSUE-123 --session codex-issue-123
 flow autoflow ISSUE-123 --session codex-issue-123
@@ -137,6 +138,11 @@ ledger:
 `issueTracker.type: local` means issues are created from the CLI and persisted
 through Flow's ledger. `ledger.type: flow` means the native append-only workflow
 ledger remains the durable state backend.
+
+For spike work that should stay out of hosted trackers, use `flow adopt-branch`.
+It records the current branch/worktree as local Flow work and marks hosted issue
+and code review projections as unpublished until a later checkpoint promotes
+them.
 
 ## State
 

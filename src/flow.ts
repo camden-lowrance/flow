@@ -48,6 +48,7 @@ const rawWorkRuntimeMethods = [
   "createSession",
   "selectIssue",
   "createIssue",
+  "adoptBranch",
   "bootstrapIssue",
   "bootstrapJiraIssue",
   "createJiraIssue",
@@ -278,6 +279,42 @@ program
       summary: options.summary,
       description: options.description,
       repoKeys: asStringArray(options.repo),
+      select: options.select,
+    }));
+  });
+
+program
+  .command("adopt-branch")
+  .description("Create or update local Flow work from an existing branch/worktree without publishing externally.")
+  .option("--issue-ref <ref>", "existing local Flow work ref to update")
+  .option("--summary <text>", "local work summary")
+  .option("--description <text>", "local work description")
+  .option("--repo <key>", "repo key")
+  .option("--path <path>", "existing branch/worktree path")
+  .option("--base-branch <branch>", "base branch")
+  .option("--prefix <prefix>", "local work ref prefix", configString(flowConfig?.issueTracker, "prefix") ?? "FLOW")
+  .option("-s, --session <id>", "session id", defaultSessionId)
+  .option("--no-select", "create or update without selecting it")
+  .action(async (options: {
+    issueRef?: string;
+    summary?: string;
+    description?: string;
+    repo?: string;
+    path?: string;
+    baseBranch?: string;
+    prefix?: string;
+    session: string;
+    select: boolean;
+  }) => {
+    await ensureSession(options.session);
+    writeJson(await runtime.adoptBranch(options.session, {
+      issueRef: options.issueRef,
+      summary: options.summary,
+      description: options.description,
+      repoKey: options.repo,
+      worktreePath: options.path,
+      baseBranch: options.baseBranch,
+      prefix: options.prefix,
       select: options.select,
     }));
   });
@@ -623,6 +660,17 @@ async function dispatch(method: string, params: Record<string, unknown>): Promis
         String(params.sessionId ?? defaultSessionId),
         params.options as CreateIssueOptions,
       );
+    case "adoptBranch":
+      return runtime.adoptBranch(String(params.sessionId ?? defaultSessionId), {
+        issueRef: typeof params.issueRef === "string" ? params.issueRef : undefined,
+        summary: typeof params.summary === "string" ? params.summary : undefined,
+        description: typeof params.description === "string" ? params.description : undefined,
+        repoKey: typeof params.repoKey === "string" ? params.repoKey : undefined,
+        worktreePath: typeof params.worktreePath === "string" ? params.worktreePath : undefined,
+        baseBranch: typeof params.baseBranch === "string" ? params.baseBranch : undefined,
+        prefix: typeof params.prefix === "string" ? params.prefix : undefined,
+        select: typeof params.select === "boolean" ? params.select : undefined,
+      });
     case "createJiraIssue":
       return runtime.createJiraIssue(
         String(params.sessionId ?? defaultSessionId),

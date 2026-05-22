@@ -107,6 +107,7 @@ const flowToolNames = [
   "flow_select_issue",
   "flow_bootstrap_jira_issue",
   "flow_create_jira_issue",
+  "flow_adopt_branch",
   "flow_move_issues_to_active_sprint",
   "flow_route_issue",
   "flow_prepare_workspace",
