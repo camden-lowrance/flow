@@ -17,6 +17,7 @@ import {
   flowLayout,
   flowRuntimePath,
   flowWorkflowLedgerPath,
+  resolveFlowPath,
   terminalWorkerStatusValues,
   type AcceptanceCriterionEvidence,
   validateFlowConfig,
@@ -38,7 +39,7 @@ const defaultSessionId = configString(flowConfig?.runtime, "defaultSessionId") ?
 const workflowLedger = createWorkflowLedger({
   cwd: repoRoot,
   adapter: configString(flowConfig?.ledger, "type"),
-  path: configString(flowConfig?.runtime, "workflowLedgerPath"),
+  path: resolveWorkflowLedgerPath(),
 });
 const rawWorkRuntimeMethods = [
   "inspectDashboardQueue",
@@ -69,7 +70,7 @@ const rawWorkRuntimeMethods = [
   "observeFlowSubject",
 ];
 const runtime = new FlowWorkRuntime({
-  store: new FlowStore({ root: flowRuntimePath(repoRoot) }),
+  store: new FlowStore({ root: resolveRuntimeStorePath() }),
   ledger: workflowLedger,
   collaboration: createCollaboration(),
   issueTracker: createIssueTracker(),
@@ -129,10 +130,15 @@ program
 
 program
   .command("bootstrap")
-  .description("Create .flow/config.yaml for this project from local repo metadata.")
-  .option("--force", "overwrite an existing .flow/config.yaml")
-  .action(async (options: { force?: boolean }) => {
-    writeJson(await bootstrapFlowConfig({ projectRoot: repoRoot, force: Boolean(options.force) }));
+  .description("Create Flow config for this project from local repo metadata.")
+  .option("--force", "overwrite an existing Flow config")
+  .option("--storage <mode>", "user, repo-untracked, or repo-tracked", "user")
+  .action(async (options: { force?: boolean; storage?: string }) => {
+    writeJson(await bootstrapFlowConfig({
+      projectRoot: repoRoot,
+      force: Boolean(options.force),
+      storage: parseBootstrapStorage(options.storage),
+    }));
   });
 
 program
@@ -210,7 +216,7 @@ program
   .option("--rebuild-projections", "rebuild .flow/ledger/issues projections from valid ledger records")
   .action(async (options: { path?: string; rebuildProjections?: boolean }) => {
     writeJson(await verifyJsonlWorkflowLedger(
-      options.path ?? configString(flowConfig?.runtime, "workflowLedgerPath") ?? flowWorkflowLedgerPath(repoRoot),
+      options.path ?? resolveWorkflowLedgerPath(),
       { rebuildProjections: Boolean(options.rebuildProjections) },
     ));
   });
@@ -798,6 +804,21 @@ function commandManifest() {
 
 function serializableDefault(value: unknown): unknown {
   return value === undefined ? undefined : value;
+}
+
+function resolveRuntimeStorePath(): string {
+  const configured = configString(flowConfig?.runtime, "storeDir") ?? configString(flowConfig?.runtime, "stateDir");
+  return configured ? resolveFlowPath(repoRoot, configured) : flowRuntimePath(repoRoot);
+}
+
+function resolveWorkflowLedgerPath(): string {
+  const configured = configString(flowConfig?.runtime, "workflowLedgerPath");
+  return configured ? resolveFlowPath(repoRoot, configured) : flowWorkflowLedgerPath(repoRoot);
+}
+
+function parseBootstrapStorage(value: unknown): "user" | "repo-untracked" | "repo-tracked" {
+  if (value === "user" || value === "repo-untracked" || value === "repo-tracked") return value;
+  throw new Error(`Expected bootstrap storage user, repo-untracked, or repo-tracked, got ${String(value)}.`);
 }
 
 function parsePositiveInteger(value: string): number {

@@ -42,7 +42,12 @@ cd /path/to/host-repo
 /path/to/flow/bin/flow bootstrap
 ```
 
-Or use the checked-in example as a starting shape for the host repo's
+By default this writes per-user Flow state outside the repo. Use
+`flow bootstrap --storage repo-untracked` to keep `.flow/` in the checkout and
+hide it through `.git/info/exclude`, or `--storage repo-tracked` when the repo is
+ready to share `.flow/config.yaml`.
+
+Or use the checked-in example as a starting shape for a shared host repo
 `.flow/config.yaml`:
 
 ```text

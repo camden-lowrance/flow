@@ -30,6 +30,8 @@ import {
   configToWorkTypeRegistry,
   flowConfigPath,
   flowIssueProjectionPath,
+  flowUserConfigPath,
+  flowUserRuntimePath,
   flowConfigSchema,
   loadFlowConfig,
   validateFlowConfig,
@@ -287,29 +289,49 @@ test("Flow config validator returns machine-readable diagnostics", async () => {
   assert.equal(result.config, undefined);
 });
 
-test("Flow config bootstrap creates .flow/config.yaml from folder metadata", async () => {
+test("Flow config bootstrap creates hidden user-state config by default", async () => {
   const root = await mkdtemp(join(tmpdir(), "flow-bootstrap-"));
-  const result = await bootstrapFlowConfig({ projectRoot: root });
+  const home = await mkdtemp(join(tmpdir(), "flow-home-"));
+  const originalHome = process.env.HOME;
+  process.env.HOME = home;
+  try {
+    const result = await bootstrapFlowConfig({ projectRoot: root });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.created, true);
+    assert.equal(result.storage, "user");
+    assert.equal(result.path, flowUserConfigPath(root));
+    assert.equal(result.repoName, result.projectName);
+
+    const config = await loadFlowConfig({ projectRoot: root });
+    assert.ok(config);
+    assert.equal(config.project.name, result.projectName);
+    assert.equal(config.topology.repos.main.name, result.repoName);
+    assert.equal(config.topology.repos.main.baseBranch, "main");
+    assert.equal(config.issueTracker?.type, "local");
+    assert.equal(config.collaboration?.type, "none");
+    assert.equal(config.sourceControl?.type, "git");
+    assert.equal(config.ledger?.type, "flow");
+    assert.equal(config.runtime?.stateDir, flowUserRuntimePath(root));
+
+    await assert.rejects(
+      () => bootstrapFlowConfig({ projectRoot: root }),
+      /Flow config already exists/,
+    );
+  } finally {
+    if (originalHome === undefined) delete process.env.HOME;
+    else process.env.HOME = originalHome;
+  }
+});
+
+test("Flow config bootstrap can create tracked repo config", async () => {
+  const root = await mkdtemp(join(tmpdir(), "flow-bootstrap-tracked-"));
+  const result = await bootstrapFlowConfig({ projectRoot: root, storage: "repo-tracked" });
 
   assert.equal(result.ok, true);
   assert.equal(result.created, true);
+  assert.equal(result.storage, "repo-tracked");
   assert.equal(result.path, flowConfigPath(root));
-  assert.equal(result.repoName, result.projectName);
-
-  const config = await loadFlowConfig({ projectRoot: root });
-  assert.ok(config);
-  assert.equal(config.project.name, result.projectName);
-  assert.equal(config.topology.repos.main.name, result.repoName);
-  assert.equal(config.topology.repos.main.baseBranch, "main");
-  assert.equal(config.issueTracker?.type, "local");
-  assert.equal(config.collaboration?.type, "none");
-  assert.equal(config.sourceControl?.type, "git");
-  assert.equal(config.ledger?.type, "flow");
-
-  await assert.rejects(
-    () => bootstrapFlowConfig({ projectRoot: root }),
-    /Flow config already exists/,
-  );
 });
 
 test("Flow config bootstrap defaults to GitHub providers when a GitHub remote exists", async () => {
@@ -317,7 +339,7 @@ test("Flow config bootstrap defaults to GitHub providers when a GitHub remote ex
   await execFileAsync("git", ["init"], { cwd: root });
   await execFileAsync("git", ["remote", "add", "origin", "git@github.com:example-org/example.git"], { cwd: root });
 
-  const result = await bootstrapFlowConfig({ projectRoot: root });
+  const result = await bootstrapFlowConfig({ projectRoot: root, storage: "repo-tracked" });
   const config = await loadFlowConfig({ projectRoot: root });
 
   assert.ok(config);
@@ -328,6 +350,19 @@ test("Flow config bootstrap defaults to GitHub providers when a GitHub remote ex
   assert.equal(config.collaboration?.type, "github");
   assert.equal(config.collaboration?.owner, "example-org");
   assert.equal(config.collaboration?.repo, "example");
+});
+
+test("Flow config bootstrap can keep repo-local config in local git exclude", async () => {
+  const root = await mkdtemp(join(tmpdir(), "flow-bootstrap-untracked-"));
+  await execFileAsync("git", ["init"], { cwd: root });
+
+  const result = await bootstrapFlowConfig({ projectRoot: root, storage: "repo-untracked" });
+  const exclude = await readFile(join(root, ".git", "info", "exclude"), "utf8");
+
+  assert.equal(result.storage, "repo-untracked");
+  assert.equal(result.path, flowConfigPath(root));
+  assert.equal(result.localExcludeUpdated, true);
+  assert.match(exclude, /^\.flow\/$/m);
 });
 
 test("Local issue tracker creates issues through the Flow ledger surface", async () => {
