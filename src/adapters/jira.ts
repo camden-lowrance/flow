@@ -5,6 +5,7 @@ import type {
   IssueTrackerProvider,
   UnifiedIssue,
 } from "./provider-contracts.js";
+import { classifyProviderCliError } from "./provider-errors.js";
 
 const execFileAsync = promisify(execFile);
 const defaultJiraSiteUrl = "https://example.atlassian.net";
@@ -38,7 +39,7 @@ export interface JiraAdapterOptions {
 }
 
 export interface JiraIssueCreateInput {
-  projectKey: string;
+  projectKey?: string;
   issueType: string;
   summary: string;
   description?: string;
@@ -211,6 +212,9 @@ export class AcliJiraAdapter implements IssueTrackerProvider {
   }
 
   async createIssue(input: JiraIssueCreateInput): Promise<JiraIssue & UnifiedIssue> {
+    if (!input.projectKey?.trim()) {
+      throw new Error("Jira project key is required. Configure issueTracker.projectKey in .flow/config.yaml or pass projectKey.");
+    }
     const args = [
       "jira",
       "workitem",
@@ -328,6 +332,8 @@ async function withPerfLog<T>(label: string, operation: () => Promise<T>, defaul
   const startedAt = Date.now();
   try {
     return await operation();
+  } catch (error) {
+    throw classifyProviderCliError("jira", label, error);
   } finally {
     const durationMs = Date.now() - startedAt;
     if (durationMs >= defaultThresholdMs) {

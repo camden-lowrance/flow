@@ -72,6 +72,28 @@ Then update:
   another CSS file instead of expanding YAML with visual tokens.
 - `runtime.worker`: optional background worker adapter overrides.
 
+Hosts that cannot or do not want to use hosted issue tracking or code review can
+keep the workflow local:
+
+```yaml
+issueTracker:
+  type: "local"
+  prefix: "FLOW"
+
+collaboration:
+  type: "none"
+
+sourceControl:
+  type: "git"
+
+ledger:
+  type: "flow"
+```
+
+In that shape, the CLI creates local issue refs and the Flow ledger is the
+durable issue/workflow record. Git remains available for local branch and
+worktree inspection, but no hosted code review provider is required.
+
 Most hosts should not configure `workTypes` or `executors`. Flow ships
 permissive defaults for prepare, implement, remediate, verify, live-thread
 execution, and background execution. The default workflow is intentionally wide

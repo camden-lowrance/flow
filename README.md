@@ -111,6 +111,28 @@ workflow is designed to guide the live agent thread through Flow with minimal
 capability gating. Configure `workTypes`, `executors`, or `runtime.worker` only
 when a host needs to replace the default workflow categories or worker adapter.
 
+For a bare local setup with no hosted issue tracker or code review provider, use
+Flow's local issue adapter and disable collaboration:
+
+```yaml
+issueTracker:
+  type: "local"
+  prefix: "FLOW"
+
+collaboration:
+  type: "none"
+
+sourceControl:
+  type: "git"
+
+ledger:
+  type: "flow"
+```
+
+`issueTracker.type: local` means issues are created from the CLI and persisted
+through Flow's ledger. `ledger.type: flow` means the native append-only workflow
+ledger remains the durable state backend.
+
 ## State
 
 Durable state lives outside agent chat history under:
@@ -131,6 +153,11 @@ of `.flow/`: runtime sessions, the append-only JSONL audit log at
 `.flow/ledger/workflow.jsonl`, and per-issue projections under
 `.flow/ledger/issues/` for fast issue-level reads. The CLI path owns workflow
 decisions through Work Runtime; legacy adapters can be enabled explicitly.
+
+`.flow/runtime` is session-local scratch state for CLI selection, pending
+confirmations, and transient runtime traces. It is not a second workflow ledger.
+Durable issue, worker, job, evidence, and handoff state belongs in
+`.flow/ledger/workflow.jsonl` and its generated issue projections.
 
 ## Contracts
 

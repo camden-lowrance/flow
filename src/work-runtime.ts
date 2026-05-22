@@ -168,7 +168,7 @@ export interface JiraInspector {
     sprintId?: number;
   }): Promise<JiraSprintMoveResult>;
   createIssue?(input: {
-    projectKey: string;
+    projectKey?: string;
     issueType: string;
     summary: string;
     description?: string;
@@ -562,7 +562,7 @@ export class FlowWorkRuntime {
     if (!options.summary?.trim()) throw new Error("Issue summary is required.");
     const issueType = options.issueType ?? "Bug";
     const createdIssue = await this.issueTracker.createIssue({
-      projectKey: options.projectKey ?? this.requireDefaultJiraProjectKey(),
+      projectKey: options.projectKey ?? this.defaultJiraProjectKey,
       issueType,
       summary: options.summary.trim(),
       description: options.description?.trim(),

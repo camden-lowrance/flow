@@ -34,6 +34,11 @@ issues. One live thread can coordinate multiple issue-tracker efforts, but each 
 keeps separate Flow state: issue, routed repos, worktrees, evidence, PR
 state, blockers, and closeout. Chat history is not the workflow ledger.
 
+`.flow/runtime` stores session-local CLI/runtime scratch state only. Treat
+`.flow/ledger/workflow.jsonl` as the durable workflow ledger and
+`.flow/ledger/issues/*.json` as generated projections that can be rebuilt from
+the ledger.
+
 ## Communication Protocol
 
 Operator-facing agents talk to the CLI for workflow actions. The CLI is the

@@ -109,6 +109,51 @@ export const flowConfigSchema = z.object({
   workTypes: z.array(workTypeConfigSchema).optional(),
   executors: z.array(executorConfigSchema).optional(),
 }).superRefine((config, ctx) => {
+  if (config.topology.branchPattern && !config.topology.branchPattern.includes("{issueRef}")) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["topology", "branchPattern"],
+      message: "topology.branchPattern must include {issueRef}.",
+    });
+  }
+
+  if (config.topology.pullRequestUrlPattern) {
+    if (!config.topology.pullRequestUrlPattern.includes("{repoName}")) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["topology", "pullRequestUrlPattern"],
+        message: "topology.pullRequestUrlPattern must include {repoName}.",
+      });
+    }
+    if (!config.topology.pullRequestUrlPattern.includes("{number}")) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["topology", "pullRequestUrlPattern"],
+        message: "topology.pullRequestUrlPattern must include {number}.",
+      });
+    }
+  }
+
+  const dashboard = config.runtime?.dashboard;
+  if (dashboard) {
+    const themeIds = dashboard.themes?.map((theme) => theme.id) ?? [];
+    const duplicateThemeId = themeIds.find((id, index) => themeIds.indexOf(id) !== index);
+    if (duplicateThemeId) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["runtime", "dashboard", "themes"],
+        message: `runtime.dashboard.themes contains duplicate id "${duplicateThemeId}".`,
+      });
+    }
+    if (dashboard.defaultThemeId && !themeIds.includes(dashboard.defaultThemeId)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["runtime", "dashboard", "defaultThemeId"],
+        message: "runtime.dashboard.defaultThemeId must match a configured theme id.",
+      });
+    }
+  }
+
   const trackerType = config.issueTracker?.type?.toString().trim().toLowerCase();
   if (!trackerType) return;
 
@@ -129,6 +174,8 @@ export const flowConfigSchema = z.object({
         message: "issueTracker.projectKey is required when issueTracker.type is jira.",
       });
     }
+    addOptionalStringFieldIssue(config.issueTracker, "activeQueueJql", ["issueTracker", "activeQueueJql"], ctx);
+    addOptionalStringFieldIssue(config.issueTracker, "backlogQueueJql", ["issueTracker", "backlogQueueJql"], ctx);
     return;
   }
 
@@ -149,8 +196,43 @@ export const flowConfigSchema = z.object({
         message: "issueTracker.repo is required when issueTracker.type is github.",
       });
     }
+    addOptionalStringArrayFieldIssue(config.issueTracker, "activeLabels", ["issueTracker", "activeLabels"], ctx);
+    addOptionalStringArrayFieldIssue(config.issueTracker, "backlogLabels", ["issueTracker", "backlogLabels"], ctx);
   }
 });
+
+function addOptionalStringFieldIssue(
+  config: Record<string, unknown> | undefined,
+  key: string,
+  path: (string | number)[],
+  ctx: z.RefinementCtx,
+): void {
+  const value = config?.[key];
+  if (value !== undefined && (typeof value !== "string" || !value.trim())) {
+    ctx.addIssue({
+      code: "custom",
+      path,
+      message: `${path.join(".")} must be a non-empty string when provided.`,
+    });
+  }
+}
+
+function addOptionalStringArrayFieldIssue(
+  config: Record<string, unknown> | undefined,
+  key: string,
+  path: (string | number)[],
+  ctx: z.RefinementCtx,
+): void {
+  const value = config?.[key];
+  if (value === undefined) return;
+  if (!Array.isArray(value) || value.some((item) => typeof item !== "string" || !item.trim())) {
+    ctx.addIssue({
+      code: "custom",
+      path,
+      message: `${path.join(".")} must be an array of non-empty strings when provided.`,
+    });
+  }
+}
 
 export type AdapterSelectionConfig = z.infer<typeof adapterSelectionConfigSchema>;
 export type RepoConfig = z.infer<typeof repoConfigSchema>;

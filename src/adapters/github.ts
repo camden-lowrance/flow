@@ -1,4 +1,6 @@
 import { execFile } from "node:child_process";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import { promisify } from "node:util";
 import type {
   CodeCollaborationProvider,
@@ -8,6 +10,7 @@ import type {
   UnifiedIssue,
   UnifiedCodeReview,
 } from "./provider-contracts.js";
+import { classifyProviderCliError } from "./provider-errors.js";
 
 const execFileAsync = promisify(execFile);
 
@@ -79,6 +82,7 @@ export class GhGitHubAdapter implements CodeCollaborationProvider {
 
   private readonly cwd: string;
   private readonly owner: string;
+  private pullRequestTemplateHeadings?: string[];
 
   constructor(options: GitHubAdapterOptions) {
     this.cwd = options.cwd;
@@ -131,7 +135,7 @@ export class GhGitHubAdapter implements CodeCollaborationProvider {
     const { stdout } = await withPerfLog(`gh pr list ${repo}${headRefName ? " --head" : ""}`, () =>
       execFileAsync("gh", args, { cwd: this.cwd, maxBuffer: 20 * 1024 * 1024 })
     );
-    return parsePullRequests(JSON.parse(stdout) as unknown, repo);
+    return parsePullRequests(JSON.parse(stdout) as unknown, repo, this.requiredPullRequestTemplateHeadings());
   }
 
   private repoSpecifier(repo: string): string {
@@ -158,7 +162,7 @@ export class GhGitHubAdapter implements CodeCollaborationProvider {
         { cwd: this.cwd, maxBuffer: 20 * 1024 * 1024 },
       )
     );
-    const parsed = parseSinglePullRequest(JSON.parse(stdout) as unknown, repo);
+    const parsed = parseSinglePullRequest(JSON.parse(stdout) as unknown, repo, this.requiredPullRequestTemplateHeadings());
     if (!parsed) return undefined;
     const feedback = await this.getAutoReviewFeedback(repo, parsed.number);
     if (feedback) applyAutoReviewFeedback(parsed, feedback);
@@ -257,6 +261,11 @@ export class GhGitHubAdapter implements CodeCollaborationProvider {
     if (codexComments.length === 0) return undefined;
     const latest = codexComments.at(-1) ?? "";
     return extractAutoReviewFeedback(latest);
+  }
+
+  private requiredPullRequestTemplateHeadings(): string[] {
+    this.pullRequestTemplateHeadings ??= readPullRequestTemplateHeadings(this.cwd);
+    return this.pullRequestTemplateHeadings;
   }
 }
 
@@ -409,6 +418,8 @@ async function withPerfLog<T>(label: string, operation: () => Promise<T>, defaul
   const startedAt = Date.now();
   try {
     return await operation();
+  } catch (error) {
+    throw classifyProviderCliError("github", label, error);
   } finally {
     const durationMs = Date.now() - startedAt;
     if (durationMs >= defaultThresholdMs) {
@@ -431,9 +442,11 @@ function applyAutoReviewFeedback(pr: PullRequestStatus, feedback: AutoReviewFeed
   pr.autoReviewNeedsConfirmationDetail = feedback.needsConfirmationDetail;
 }
 
-export function parsePullRequests(value: unknown, repo: string): PullRequestStatus[] {
+export function parsePullRequests(value: unknown, repo: string, requiredTemplateHeadings: string[] = []): PullRequestStatus[] {
   if (!Array.isArray(value)) return [];
-  return value.map((item) => parseSinglePullRequest(item, repo)).filter((item): item is PullRequestStatus => Boolean(item));
+  return value
+    .map((item) => parseSinglePullRequest(item, repo, requiredTemplateHeadings))
+    .filter((item): item is PullRequestStatus => Boolean(item));
 }
 
 export function parseGitHubIssues(value: unknown): GitHubIssueStatus[] {
@@ -514,13 +527,14 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function parseSinglePullRequest(value: unknown, repo: string): PullRequestStatus | undefined {
+function parseSinglePullRequest(value: unknown, repo: string, requiredTemplateHeadings: string[] = []): PullRequestStatus | undefined {
   if (!value || typeof value !== "object") return undefined;
   const record = value as Record<string, unknown>;
   const number = Number(record.number);
   if (!Number.isFinite(number)) return undefined;
   const templateMissingHeadings = missingPullRequestTemplateHeadings(
     typeof record.body === "string" ? record.body : "",
+    requiredTemplateHeadings,
   );
   const reviewComments = reviewCommentSummary(record.reviews);
   return {
@@ -575,14 +589,8 @@ function mergeCommitSha(value: unknown): string | undefined {
   return typeof record.oid === "string" && record.oid ? record.oid : undefined;
 }
 
-const requiredPullRequestTemplateHeadings = [
-  "JIRA Ticket or Reason for Change",
-  "Description",
-  "Summary of Changes",
-  "Related PRs or Issues",
-];
-
-export function missingPullRequestTemplateHeadings(body: string): string[] {
+export function missingPullRequestTemplateHeadings(body: string, requiredTemplateHeadings: string[] = []): string[] {
+  if (requiredTemplateHeadings.length === 0) return [];
   const headings = new Set(
     body
       .replace(/\r/g, "")
@@ -591,7 +599,38 @@ export function missingPullRequestTemplateHeadings(body: string): string[] {
       .filter((heading): heading is string => Boolean(heading))
       .map(normalizeHeading),
   );
-  return requiredPullRequestTemplateHeadings.filter((heading) => !headings.has(normalizeHeading(heading)));
+  return requiredTemplateHeadings.filter((heading) => !headings.has(normalizeHeading(heading)));
+}
+
+function readPullRequestTemplateHeadings(cwd: string): string[] {
+  const template = readFirstPullRequestTemplate(cwd);
+  return template ? markdownHeadings(template) : [];
+}
+
+function readFirstPullRequestTemplate(cwd: string): string | undefined {
+  const candidates = [
+    join(cwd, ".github", "pull_request_template.md"),
+    join(cwd, "pull_request_template.md"),
+    join(cwd, "PULL_REQUEST_TEMPLATE.md"),
+  ];
+  for (const candidate of candidates) {
+    if (existsSync(candidate)) return readFileSync(candidate, "utf8");
+  }
+
+  const templateDir = join(cwd, ".github", "PULL_REQUEST_TEMPLATE");
+  if (!existsSync(templateDir)) return undefined;
+  const [firstTemplate] = readdirSync(templateDir)
+    .filter((entry) => entry.toLowerCase().endsWith(".md"))
+    .sort();
+  return firstTemplate ? readFileSync(join(templateDir, firstTemplate), "utf8") : undefined;
+}
+
+function markdownHeadings(markdown: string): string[] {
+  return markdown
+    .replace(/\r/g, "")
+    .split("\n")
+    .map((line) => /^#{1,6}\s+(.+?)\s*$/.exec(line.trim())?.[1])
+    .filter((heading): heading is string => Boolean(heading));
 }
 
 function normalizeHeading(value: string): string {
