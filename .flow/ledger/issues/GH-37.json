@@ -1,0 +1,60 @@
+{
+  "issue": {
+    "ref": "GH-37",
+    "title": "Track Flow ledger in repo while ignoring runtime",
+    "repoKeys": [
+      "flow"
+    ],
+    "state": "selected",
+    "updatedAt": "2026-05-27T13:59:07.846Z",
+    "metadata": {
+      "issueStatus": "Open",
+      "issueStatusCategory": "To Do",
+      "issueUpdated": "2026-05-27T13:55:16Z",
+      "issueUrl": "https://github.com/camden-lowrance/flow/issues/37",
+      "issueType": "task",
+      "issueLabels": [],
+      "workflow.external.issue.status": "published",
+      "workflow.external.code_review.status": "unpublished",
+      "branchKind": "feature",
+      "work_dir": "C:/Users/camde/Documents/GitHub/flow/.worktrees/feature-gh-37-track-flow-ledger-in-repo-while-ignoring-runtime",
+      "branch": "feature/gh-37-track-flow-ledger-in-repo-while-ignoring-runtime",
+      "workflow.repos.flow.base_branch": "main",
+      "workflow.repos.flow.branch": "feature/gh-37-track-flow-ledger-in-repo-while-ignoring-runtime",
+      "workflow.repos.flow.head_sha": "069eca421f7eeb3214b851bb62469ae9c5e9966b",
+      "workflow.repos.flow.dirty": true,
+      "workflow.repos.flow.worktree_path": "C:/Users/camde/Documents/GitHub/flow/.worktrees/feature-gh-37-track-flow-ledger-in-repo-while-ignoring-runtime",
+      "evidenceRecorded": true,
+      "evidenceSummary": "flow config validate, flow ledger verify, git diff --check, and npm test all passed.",
+      "evidenceSource": "local",
+      "evidenceCriteria": [
+        {
+          "label": "flow validation",
+          "status": "passed",
+          "evidence": "flow config validate, flow ledger verify, git diff --check, and npm test all passed.",
+          "source": "local"
+        },
+        {
+          "label": "tests",
+          "status": "passed",
+          "evidence": "flow config validate, flow ledger verify, git diff --check, and npm test all passed.",
+          "source": "local"
+        },
+        {
+          "label": "diff check",
+          "status": "passed",
+          "evidence": "flow config validate, flow ledger verify, git diff --check, and npm test all passed.",
+          "source": "local"
+        }
+      ],
+      "workflow.acceptance.status": "recorded",
+      "workflow.acceptance.criteria_json": "[{\"label\":\"flow validation\",\"status\":\"passed\",\"evidence\":\"flow config validate, flow ledger verify, git diff --check, and npm test all passed.\",\"source\":\"local\"},{\"label\":\"tests\",\"status\":\"passed\",\"evidence\":\"flow config validate, flow ledger verify, git diff --check, and npm test all passed.\",\"source\":\"local\"},{\"label\":\"diff check\",\"status\":\"passed\",\"evidence\":\"flow config validate, flow ledger verify, git diff --check, and npm test all passed.\",\"source\":\"local\"}]",
+      "evidenceRecordedAt": "2026-05-27T13:59:07.846Z"
+    }
+  },
+  "workerRuns": [],
+  "workerResults": [],
+  "workJobs": [],
+  "workJobResults": [],
+  "updatedAt": "2026-05-27T13:59:07.847Z"
+}
