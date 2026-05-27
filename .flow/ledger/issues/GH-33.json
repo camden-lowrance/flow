@@ -5,8 +5,8 @@
     "repoKeys": [
       "flow"
     ],
-    "state": "selected",
-    "updatedAt": "2026-05-27T16:04:27.282Z",
+    "state": "awaiting_review",
+    "updatedAt": "2026-05-27T16:05:46.830Z",
     "metadata": {
       "issueStatus": "Open",
       "issueStatusCategory": "To Do",
@@ -58,12 +58,29 @@
       "documentationRecorded": true,
       "documentationDisposition": "updated",
       "documentationSummary": "Dashboard request handling now documents its contract in code and readonly checks: DashboardState depends on a direct FlowWorkRuntime queue reader, avoids child_process/Flow CLI calls, uses a short snapshot cache, and inspectDashboardQueue reads ledger state without live provider refresh.",
-      "documentationRecordedAt": "2026-05-27T16:04:27.282Z"
+      "documentationRecordedAt": "2026-05-27T16:04:27.282Z",
+      "prRepo": "flow",
+      "prNumber": 41,
+      "prUrl": "https://github.com/camden-lowrance/flow/pull/41",
+      "prHeadRefName": "feature/gh-33-fix-dashboard-api-performance-inspectdashboardqueue-time",
+      "prIsDraft": false,
+      "humanReviewRequired": false,
+      "prRecordedAt": "2026-05-27T16:05:46.829Z",
+      "workflow.repos.flow.pr_repo": "flow",
+      "workflow.repos.flow.pr_number": 41,
+      "workflow.repos.flow.pr_url": "https://github.com/camden-lowrance/flow/pull/41",
+      "workflow.repos.flow.pr_head_ref_name": "feature/gh-33-fix-dashboard-api-performance-inspectdashboardqueue-time",
+      "workflow.repos.flow.pr_is_draft": false,
+      "workflow.repos.flow.pr_recorded_at": "2026-05-27T16:05:46.829Z",
+      "prChecksPassing": true,
+      "prTemplateMissingHeadings": [],
+      "workflow.repos.flow.pr_checks_passing": true,
+      "workflow.repos.flow.pr_template_missing_headings": []
     }
   },
   "workerRuns": [],
   "workerResults": [],
   "workJobs": [],
   "workJobResults": [],
-  "updatedAt": "2026-05-27T16:04:27.284Z"
+  "updatedAt": "2026-05-27T16:05:46.831Z"
 }
