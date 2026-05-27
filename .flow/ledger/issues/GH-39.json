@@ -1,0 +1,31 @@
+{
+  "issue": {
+    "ref": "GH-39",
+    "title": "Clean up docs and add dashboard screenshots",
+    "repoKeys": [
+      "flow"
+    ],
+    "state": "selected",
+    "updatedAt": "2026-05-27T15:38:14.479Z",
+    "metadata": {
+      "issueStatus": "Open",
+      "issueStatusCategory": "To Do",
+      "issueUpdated": "2026-05-27T15:32:58Z",
+      "issueUrl": "https://github.com/camden-lowrance/flow/issues/39",
+      "issueType": "task",
+      "issueLabels": [],
+      "workflow.external.issue.status": "published",
+      "workflow.external.code_review.status": "unpublished",
+      "branchKind": "feature",
+      "documentationRecorded": true,
+      "documentationDisposition": "updated",
+      "documentationSummary": "Updated README and docs/runtime-and-dashboard.md with current dashboard screenshots, state source, read-only boundary, routes, and verification notes.",
+      "documentationRecordedAt": "2026-05-27T15:38:14.479Z"
+    }
+  },
+  "workerRuns": [],
+  "workerResults": [],
+  "workJobs": [],
+  "workJobResults": [],
+  "updatedAt": "2026-05-27T15:38:14.480Z"
+}
