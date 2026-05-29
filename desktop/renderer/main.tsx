@@ -492,10 +492,6 @@ function App() {
                 <span className="project-avatar" aria-hidden="true">
                   {theme.iconUrl ? <img src={theme.iconUrl} alt="" /> : theme.initials}
                 </span>
-                <span className="project-card-text">
-                  <span className="project-name">{project.name}</span>
-                  <span className="project-card-meta"><Folder size={11} />{project.statusCounts?.total ?? 0}</span>
-                </span>
                 {project.attentionCount ? <span className="project-badge danger">{project.attentionCount}</span> : null}
               </button>
             );
@@ -555,7 +551,7 @@ function App() {
                   <span className={statusThemeClass(workStatusLabel(issue))}>{workStatusLabel(issue)}</span>
                 </div>
                 <div className="issue-title">{issue.title || "Untitled issue"}</div>
-                <WorkflowTrack status={workStatusLabel(issue)} />
+                {!isExceptionalStatus(workStatusLabel(issue)) ? <WorkflowTrack status={workStatusLabel(issue)} /> : null}
                 {issueDetail(issue) ? <div className="issue-note">{issueDetail(issue)}</div> : null}
                 <div className="issue-actions-preview">
                   {issue.prStatus ? <span>Open PR</span> : null}
