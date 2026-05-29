@@ -8,7 +8,6 @@ import {
   useMessage,
 } from "@assistant-ui/react";
 import {
-  Activity,
   CircleCheck,
   ClipboardList,
   FileText,
@@ -445,6 +444,7 @@ function App() {
   const snapshotStatusLabel = status === "error" ? "Snapshot unavailable" : snapshotLabel;
   const showManualActions = selectedIssue ? isManualActionIssue(selectedIssue) : false;
   const autoflowEnabled = activeProject?.autoflowEnabled !== false;
+  const activeProjectTheme = activeProject ? projectThemeFor(activeProject) : undefined;
 
   return (
     <div className="desktop-shell">
@@ -458,22 +458,29 @@ function App() {
         </header>
         <div className="project-active-block">
           <div className="eyebrow">Project</div>
-          <button type="button" className="project-active-name" title={activeProject?.root}>
-            <span>{activeProject?.name || "Flow"}</span>
-            <span aria-hidden="true">v</span>
-          </button>
           <button
             type="button"
-            className={autoflowEnabled ? "project-autoflow-toggle enabled" : "project-autoflow-toggle"}
-            onClick={() => void toggleProjectAutoflow()}
-            aria-pressed={autoflowEnabled}
+            className="project-active-name"
+            title={activeProject?.root}
+            style={activeProjectTheme ? {
+              "--project-color": activeProjectTheme.color,
+              "--project-color-soft": activeProjectTheme.colorSoft,
+              "--project-color-text": activeProjectTheme.colorText,
+            } as React.CSSProperties : undefined}
           >
-            <span>Autoflow</span>
-            <span>{autoflowEnabled ? "On" : "Off"}</span>
+            <span className="project-active-avatar" aria-hidden="true">
+              {activeProjectTheme?.iconUrl ? <img src={activeProjectTheme.iconUrl} alt="" /> : activeProjectTheme?.initials ?? "FL"}
+            </span>
+            <span className="project-active-copy">
+              <span>{activeProject?.name || "Flow"}</span>
+              <span>{activeProject?.statusCounts?.total ?? issues.length} issues</span>
+            </span>
+            {activeProject?.attentionCount ? <span className="project-badge active-card-badge danger">{activeProject.attentionCount}</span> : null}
+            <span className="project-chevron" aria-hidden="true">v</span>
           </button>
         </div>
         <div className="project-list">
-          {projects.map((project) => {
+          {projects.filter((project) => project.id !== activeProjectId).map((project) => {
             const theme = projectThemeFor(project);
             return (
               <button
@@ -508,15 +515,27 @@ function App() {
           <div>
             <div className="eyebrow">Issues</div>
           </div>
-          <button
-            type="button"
-            className="icon-button"
-            title="Refresh snapshot"
-            onClick={() => void refresh(false)}
-            disabled={status === "loading"}
-          >
-            <RefreshCw size={15} />
-          </button>
+          <div className="issue-header-actions">
+            <button
+              type="button"
+              className={autoflowEnabled ? "autoflow-switch enabled" : "autoflow-switch"}
+              onClick={() => void toggleProjectAutoflow()}
+              aria-pressed={autoflowEnabled}
+              title="Toggle project Autoflow"
+            >
+              <span>Autoflow</span>
+              <span className="switch-track" aria-hidden="true"><span /></span>
+            </button>
+            <button
+              type="button"
+              className="icon-button"
+              title="Refresh snapshot"
+              onClick={() => void refresh(false)}
+              disabled={status === "loading"}
+            >
+              <RefreshCw size={15} />
+            </button>
+          </div>
         </header>
 
         <label className="search-box">
@@ -570,13 +589,9 @@ function App() {
         <header className="chat-header">
           <div>
             <h2>Chat</h2>
-            <p>Your AI pair for Git workflows</p>
+            <p>{selectedIssue ? `${selectedIssue.ref} · ${workStatusLabel(selectedIssue)}` : "Select an issue to open its thread"}</p>
           </div>
           <div className="chat-header-actions">
-            <button type="button" className="system-autoflow-button" title={autoflowEnabled ? "Autoflow selected issue" : "Enable Autoflow for this project"} onClick={() => void invokeAction("autoflow")} disabled={!autoflowEnabled || !selectedIssueRef || Boolean(actionBusy)}>
-              <Activity size={15} />
-              <span>{actionBusy === "autoflow" ? "Autoflowing..." : "Autoflow"}</span>
-            </button>
             <div className="snapshot-pill" title={snapshotStatusLabel}>
               <span className={status === "error" ? "status-dot error" : status === "loading" ? "status-dot loading" : "status-dot ok"} />
               <span className="snapshot-text">{snapshotStatusLabel}</span>
