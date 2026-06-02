@@ -785,6 +785,7 @@ export default function (pi: ExtensionAPI) {
     parameters: Type.Object({
       sessionId: Type.String(),
       autoPrepareWorkspace: Type.Optional(Type.Boolean()),
+      autoApproveExecution: Type.Optional(Type.Boolean()),
       maxSteps: Type.Optional(Type.Number()),
     }),
     async execute(_toolCallId, params) {
@@ -792,6 +793,7 @@ export default function (pi: ExtensionAPI) {
         params.sessionId,
         {
           autoPrepareWorkspace: params.autoPrepareWorkspace ?? true,
+          autoApproveExecution: params.autoApproveExecution,
           maxSteps: params.maxSteps,
         },
       );

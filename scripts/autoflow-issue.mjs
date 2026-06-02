@@ -32,12 +32,13 @@ export async function main(args) {
       sessionId: session.id,
       options: {
         autoPrepareWorkspace: true,
+        autoApproveExecution: true,
         maxSteps,
       },
     });
     const status = String(finalResult?.status ?? "");
     const message = String(finalResult?.message ?? "");
-    if (status === "review_ready" || status === "done") break;
+    if (status === "review_ready" || status === "done" || status === "execution_handoff") break;
     if (message.toLowerCase().includes("blocked on provider escalation")) break;
   }
 
