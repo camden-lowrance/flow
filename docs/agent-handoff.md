@@ -45,7 +45,7 @@ Typical loop:
 3. Prepare or adopt the workspace through Flow.
 4. Request or read the handoff prompt.
 5. Run a bounded local worker process in the prepared workspace.
-6. Inspect the diff and run relevant tests.
+6. Inspect the diff and run relevant tests in the prepared workspace.
 7. Record evidence, result, documentation, PR state, or blocker notes through
    Flow.
 
@@ -97,6 +97,21 @@ Request handoff details:
 @'
 {"op":"workflow","mode":"observe","id":"GH-123"}
 '@ | flow
+```
+
+If Flow returns a handoff prompt or handoff request, the orchestrator can save
+the prompt for a local worker:
+
+```powershell
+$handoffPrompt = "Use Flow to work GH-123 in the prepared workspace."
+Set-Content -Path .\flow-handoff-prompt.txt -Value $handoffPrompt -Encoding utf8NoBOM
+```
+
+Inspect changes and run tests before recording success:
+
+```powershell
+git diff --stat
+npm test
 ```
 
 Record closeout:
@@ -158,13 +173,44 @@ quad $prompt
 
 Adjust flags to the installed CLI. Keep the Flow side of the workflow unchanged.
 
+Set a timeout outside the worker when the host supports one. If the worker exits
+nonzero, times out, or returns an unusable result, record the blocker and next
+pickup through Flow instead of retrying silently.
+
+Flow errors are JSON too. If `ok` is false, read `error.code`, `error.message`,
+and any manifest hint before deciding the next command. If Flow reports a
+blocker state, stop the worker path and record or surface the blocker rather
+than continuing in an unmanaged workspace.
+
+Example handoff response shape:
+
+```json
+{
+  "ok": true,
+  "op": "workflow",
+  "result": {
+    "status": "execution_handoff",
+    "handoffRequest": {
+      "issueRef": "GH-123",
+      "repoKey": "flow",
+      "workspacePath": "C:/repo/.worktrees/feature-gh-123",
+      "prompt": "Use Flow to work this prompt."
+    }
+  }
+}
+```
+
 ## Subagent Prompt
 
 Pass a short Flow contract into every worker:
 
 ```text
 You are working in a Flow-prepared workspace for GH-123.
-Use Flow's JSON CLI for workflow state and records.
+Use Flow's JSON CLI for workflow state and records. Start by discovering the
+available command shape with:
+@'
+{"op":"manifest","target":"workflow"}
+'@ | flow
 Do not use Autoflow.
 Make the requested code changes, run focused tests, and report changed files,
 tests, blockers, and next pickup.
