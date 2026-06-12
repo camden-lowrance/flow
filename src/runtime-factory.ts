@@ -1,6 +1,8 @@
 import { AcliJiraAdapter } from "./adapters/jira.js";
 import { GhGitHubAdapter, GhGitHubIssueTrackerAdapter } from "./adapters/github.js";
+import { LinearIssueTrackerAdapter } from "./adapters/linear.js";
 import { LocalIssueTrackerAdapter, NoopCodeCollaborationAdapter } from "./adapters/local.js";
+import { NotionAdapter } from "./adapters/notion.js";
 import type { CodeCollaborationProvider, IssueTrackerProvider } from "./adapters/provider-contracts.js";
 import type { FlowConfig } from "./config/config-schema.js";
 import { configToProjectTopology, configToWorkTypeRegistry } from "./config/config-loader.js";
@@ -143,6 +145,39 @@ function createIssueTracker(projectRoot: string, flowConfig: FlowConfig | undefi
       assignee: configString(issueTracker, "assignee"),
       activeLabels: configStringArray(issueTracker, "activeLabels"),
       backlogLabels: configStringArray(issueTracker, "backlogLabels"),
+    });
+  }
+  if (type === "linear") {
+    const apiKey = configString(issueTracker, "apiKey");
+    const teamId = configString(issueTracker, "teamId");
+    if (!apiKey) throw new Error("issueTracker.apiKey is required when issueTracker.type is linear.");
+    if (!teamId) throw new Error("issueTracker.teamId is required when issueTracker.type is linear.");
+    return new LinearIssueTrackerAdapter({
+      apiKey,
+      teamId,
+      workspaceUrl: configString(issueTracker, "workspaceUrl"),
+    });
+  }
+  if (type === "notion") {
+    const apiKey = configString(issueTracker, "apiKey") ?? process.env.NOTION_API_KEY;
+    if (!apiKey) {
+      throw new Error("Notion API key is required. Set issueTracker.apiKey in .flow/config.yaml or NOTION_API_KEY environment variable.");
+    }
+    const databaseId = configString(issueTracker, "databaseId");
+    if (!databaseId) {
+      throw new Error("Notion database ID is required. Set issueTracker.databaseId in .flow/config.yaml.");
+    }
+    const propertyMapping = configRecord(issueTracker, "propertyMapping");
+    return new NotionAdapter({
+      apiKey,
+      databaseId,
+      propertyMapping: propertyMapping ? {
+        title: configString(propertyMapping, "title"),
+        status: configString(propertyMapping, "status"),
+        labels: configString(propertyMapping, "labels"),
+        assignee: configString(propertyMapping, "assignee"),
+        type: configString(propertyMapping, "type"),
+      } : undefined,
     });
   }
   return new AcliJiraAdapter({

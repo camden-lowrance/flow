@@ -19,6 +19,8 @@ const defaultTestFiles = [
   "test/sql-store.test.ts",
   "test/readiness.test.ts",
   "test/adapter-triage.test.ts",
+  "test/linear-adapter.test.ts",
+  "test/notion-adapter.test.ts",
   "test/execution-plane.test.ts",
   "test/hatchet-execution.test.ts",
 ];
