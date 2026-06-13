@@ -6,12 +6,12 @@ prompt text for agent hosts lives in `prompts/`.
 ## Dogfood Flow (Core Bookkeeping)
 
 - When working on a Flow issue, use Flow for bookkeeping before editing code.
-- Prefer registered `flow_*` tools when available. Otherwise use the `flow`
-  JSON CLI and parse its JSON stdout.
+- Use registered `flow_*` MCP tools. If those tools are unavailable, stop and
+  surface that Flow MCP is not connected; do not fall back to a JSON CLI.
 - Core Flow commands are deterministic bookkeeping: issue create/select, workspace
   prepare/adopt, result/evidence/documentation/PR recording, and bounded workflow
   state transitions. Use these directly.
-- For simple issue capture, use `flow createIssue` directly. Do not run intake
+- For simple issue capture, use `flow_issue_create` directly. Do not run intake
   review or semantic dedupe unless specifically needed.
 - Do not silently bypass Flow by editing the primary checkout for issue work. If
   Flow cannot prepare/adopt a workspace or record the work, stop and surface the
@@ -44,14 +44,15 @@ prompt text for agent hosts lives in `prompts/`.
 
 ## Configuration And Boundaries
 
-- Keep Flow's durable configuration in `.flow/config.yaml`, following a
-  Kubernetes-style declarative config model.
+- Keep Flow's durable configuration behind MCP. Use `flow_bootstrap`,
+  `flow_config_get`, and `flow_config_update`; do not edit a project config
+  file directly.
 - Do not make environment variables the primary configuration surface for
   workflow topology, provider selection, executor policy, ports, ledgers, or
   other durable settings.
 - Environment variables are acceptable for process context, local launch
   mechanics, and secret injection when a concrete adapter requires them, but
-  config should remain the source of truth for behavior.
+  Flow-managed config should remain the source of truth for behavior.
 - Use command-line flags only for one-off command input, not durable settings.
 - Flow CLI stdout is always JSON; do not add human-output modes or `--json`
   toggles.
