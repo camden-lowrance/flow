@@ -94,7 +94,7 @@ Use `flow_config_update` with a schema-validated patch:
 - `ledger.type`: `sql` for SQLite/Postgres state or `flow` for the unified
   SQLite state backend.
 - `runtime.store.type`: `sqlite` or `file`.
-- `runtime.agentSession.provider`: `pi` or `claude`.
+- `runtime.agentSession.provider`: `claude`.
 - `runtime.dashboard.host`, `runtime.dashboard.port`, `runtime.dashboard.url`:
   dashboard bind/public settings.
 

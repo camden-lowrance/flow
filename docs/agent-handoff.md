@@ -95,14 +95,6 @@ $prompt = Get-Content .\flow-handoff-prompt.txt -Raw
 codex exec $prompt
 ```
 
-Pi Agent:
-
-```powershell
-Set-Location "C:\path\to\prepared\workspace"
-$prompt = Get-Content .\flow-handoff-prompt.txt -Raw
-pi-coding-agent $prompt
-```
-
 Quad or another local agent:
 
 ```powershell

@@ -69,15 +69,15 @@ These steps are listed to show the Flow-owned semantics. They remain in Flow
 internals through `AutoflowService.runExecutionPlanePayload`; Hatchet only
 schedules and invokes that method through the task runner.
 
-## Durable Pi Sessions
+## Durable Agent Sessions
 
-A durable Pi session should be a Flow-owned handle, not a Hatchet-owned
+A durable agent session should be a Flow-owned handle, not a Hatchet-owned
 transcript. Hatchet should persist and pass only enough data to resume:
 
-- `provider: "pi"`
+- `provider: "claude"`
 - `issueRef`
 - `flowSessionId`
-- `piSessionId`
+- `agentSessionId`
 - `sessionFile`
 - `workspacePath`
 
