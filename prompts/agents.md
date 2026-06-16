@@ -28,6 +28,10 @@ project under work, dogfood Flow rather than treating it as a passive codebase.
 ## Repository Rules
 
 - Search before reading large files. Use `rg` and targeted line-range reads.
+- The repo's thin OKF knowledge projection lives in `.okf/`. Use it as a
+  navigation aid for stable repo contracts; canonical docs, code, tests, Flow
+  MCP state, and Flow-managed config remain the sources of truth. Use
+  `skills/okf-repo-projection` to refresh it.
 - Keep durable behavior in Flow-managed config; use environment variables only
   for process context and secrets.
 - Keep SDKs, issue trackers, code review tools, and model providers behind

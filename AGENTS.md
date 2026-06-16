@@ -35,6 +35,10 @@ prompt text for agent hosts lives in `prompts/`.
   the same answer.
 - Prefer `rg -n "search term" path/to/file` to find relevant locations, then
   read only those ranges.
+- The repo's thin OKF knowledge projection lives in `.okf/`. Use it as a
+  navigation aid for stable repo contracts; canonical docs, code, tests, Flow
+  MCP state, and Flow-managed config remain the sources of truth. Use
+  `skills/okf-repo-projection` to refresh it.
 - Flow test files are split by domain. When working on readiness, check
   `test/readiness.test.ts`. For autoflow orchestration (experimental app layer),
   check `test/experimental/work-runtime-autoflow.test.ts`. For adapter/triage,
