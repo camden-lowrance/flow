@@ -105,6 +105,9 @@
     "yaml": "^2.9.0",
     "zod": "^4.4.3"
   },
+  "overrides": {
+    "form-data": "4.0.6"
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@tailwindcss/postcss": "^4.3.0",
