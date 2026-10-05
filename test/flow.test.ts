@@ -1124,11 +1124,32 @@ test("Flow MCP can manage multiple registered projects in one server", async () 
     };
     assert.equal(secondBootstrap.project.root, secondRoot);
     assert.equal(secondBootstrap.project.valid, true);
-    await createReviewedLocalIssue(client, "Second project issue", secondScope);
+    const secondIssue = await createReviewedLocalIssue(client, "Second project issue", secondScope);
+
+    await assert.rejects(
+      () => callFlowTool(client, "flow_queue", { limit: 10 }),
+      /Flow project is ambiguous/,
+    );
+    await assert.rejects(
+      () => callFlowTool(client, "flow_record_evidence", {
+        id: firstIssue.ref,
+        summary: "Ambiguous evidence should not be recorded.",
+      }),
+      /Flow project is ambiguous/,
+    );
 
     const secondQueue = await callFlowTool(client, "flow_queue", { ...secondScope, limit: 10 }) as { value: Array<{ ref: string; title: string }> };
     assert.equal(secondQueue.value.some((issue) => issue.title === "Second project issue"), true);
     assert.equal(secondQueue.value.some((issue) => issue.title === "First project issue"), false);
+
+    const evidence = await callFlowTool(client, "flow_record_evidence", {
+      ...secondScope,
+      id: secondIssue.ref,
+      summary: "Explicitly scoped evidence.",
+      source: "test",
+    }) as { projectId: string; projectRoot: string };
+    assert.equal(evidence.projectId, added.project.id);
+    assert.equal(evidence.projectRoot, secondRoot);
 
     const firstQueue = await callFlowTool(client, "flow_queue", { projectRoot: firstRoot, limit: 10 }) as { value: Array<{ ref: string; title: string }> };
     assert.equal(firstQueue.value.some((issue) => issue.ref === firstIssue.ref), true);

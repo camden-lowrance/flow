@@ -22,6 +22,7 @@ export interface FlowMcpServerOptions {
 type ConfiguredRuntime = ReturnType<typeof createConfiguredWorkRuntime>;
 
 interface FlowMcpContext {
+  project: FlowMcpProjectRecord;
   projectRoot: string;
   defaultSessionId: string;
   runtime: FlowWorkRuntime;
@@ -34,7 +35,7 @@ const optionalSessionSchema = {
   sessionId: z.string().optional().describe("Flow session id. Defaults to runtime.defaultSessionId or mcp."),
 };
 const projectScopeSchema = {
-  projectId: z.string().optional().describe("Registered Flow project id. Defaults to the MCP server's default project."),
+  projectId: z.string().optional().describe("Registered Flow project id. Required when more than one valid project is registered."),
   projectRoot: z.string().optional().describe("Flow project root. Registers the project if it is not known yet."),
 };
 const projectReadScopeSchema = {
@@ -106,12 +107,25 @@ class FlowMcpProjectManager {
   async resolveProject(input: { projectId?: string; projectRoot?: string } = {}): Promise<{ project: FlowMcpProjectRecord; context: FlowMcpContext }> {
     let project = input.projectId || input.projectRoot
       ? await this.registry.getProject({ projectId: input.projectId, root: input.projectRoot })
-      : await this.defaultProject();
+      : await this.implicitProject();
     if (!project && input.projectRoot) {
       project = await this.registry.addProject(input.projectRoot);
     }
     if (!project) throw new Error("Unknown Flow project. Pass projectId, projectRoot, or register the project with flow_project_add.");
     return { project, context: await this.contextForProject(project) };
+  }
+
+  private async implicitProject(): Promise<FlowMcpProjectRecord> {
+    const projects = await this.registry.listProjects();
+    const validProjects = projects.filter((project) => project.valid);
+    if (validProjects.length === 1) return validProjects[0];
+    if (validProjects.length > 1) {
+      throw new Error(
+        `Flow project is ambiguous: ${validProjects.length} valid projects are registered. ` +
+          "Pass projectId or projectRoot, or use allProjects for supported read tools.",
+      );
+    }
+    return await this.defaultProject();
   }
 
   async refreshProject(input: { projectId?: string; projectRoot?: string } = {}): Promise<{ project: FlowMcpProjectRecord; context: FlowMcpContext }> {
@@ -134,7 +148,7 @@ class FlowMcpProjectManager {
   private contextForProject(project: FlowMcpProjectRecord): Promise<FlowMcpContext> {
     const cached = this.contexts.get(project.id);
     if (cached) return cached;
-    const created = createFlowMcpContext({
+    const created = createFlowMcpContext(project, {
       projectRoot: project.root,
       defaultSessionId: this.defaultSessionId,
     });
@@ -143,11 +157,12 @@ class FlowMcpProjectManager {
   }
 }
 
-async function createFlowMcpContext(options: FlowMcpServerOptions): Promise<FlowMcpContext> {
+async function createFlowMcpContext(project: FlowMcpProjectRecord, options: FlowMcpServerOptions): Promise<FlowMcpContext> {
   const projectRoot = options.projectRoot ?? defaultRepoRoot;
   const configValidation = await validateFlowConfig({ projectRoot });
   const configuredRuntime = createConfiguredWorkRuntime({ projectRoot, flowConfig: configValidation.config });
   return {
+    project,
     projectRoot,
     defaultSessionId: options.defaultSessionId
       ?? configString(configValidation.config?.runtime, "defaultSessionId")
@@ -208,7 +223,7 @@ function registerReadTools(server: McpServer, projectManager: FlowMcpProjectMana
     description: "Read the current Flow handoff state for a session.",
     inputSchema: { ...optionalSessionSchema, ...projectScopeSchema },
     annotations: { readOnlyHint: true },
-  }, async ({ sessionId, projectId, projectRoot }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ sessionId, projectId, projectRoot }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     withSession(context, sessionId, (activeSessionId) => context.runtime.summarizeHandoff(activeSessionId))
   )));
 
@@ -241,14 +256,14 @@ function registerReadTools(server: McpServer, projectManager: FlowMcpProjectMana
       force,
     });
     const refreshed = await projectManager.refreshProject({ projectId: project.id });
-    return result({ ...bootstrap, project: refreshed.project });
+    return result(addProjectScope(refreshed.project, { ...bootstrap, project: refreshed.project }));
   });
 
   server.registerTool("flow_config_get", {
     description: "Read the Flow-managed config for a project.",
     inputSchema: projectScopeSchema,
     annotations: { readOnlyHint: true },
-  }, async ({ projectId, projectRoot }) => result(await withProject(projectManager, { projectId, projectRoot }, async (context) => ({
+  }, async ({ projectId, projectRoot }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, async (context) => ({
     path: flowConfigPath(context.projectRoot),
     config: await loadFlowConfig({ projectRoot: context.projectRoot }),
   }))));
@@ -264,7 +279,7 @@ function registerReadTools(server: McpServer, projectManager: FlowMcpProjectMana
     const updated = await updateFlowConfig({ projectRoot: context.projectRoot, patch });
     const refreshed = await projectManager.refreshProject({ projectId: project.id });
     const { config: _config, ...publicResult } = updated;
-    return result({ ...publicResult, project: refreshed.project });
+    return result(addProjectScope(refreshed.project, { ...publicResult, project: refreshed.project }));
   });
 
   server.registerTool("flow_config_validate", {
@@ -283,7 +298,7 @@ function registerReadTools(server: McpServer, projectManager: FlowMcpProjectMana
     description: "Explain configured topology, adapters, and runtime settings.",
     inputSchema: projectScopeSchema,
     annotations: { readOnlyHint: true },
-  }, async ({ projectId, projectRoot }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ projectId, projectRoot }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     explainConfig(context.projectRoot)
   )));
 
@@ -293,7 +308,7 @@ function registerReadTools(server: McpServer, projectManager: FlowMcpProjectMana
       ...projectScopeSchema,
       write: z.boolean().optional(),
     },
-  }, async ({ projectId, projectRoot, write }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ projectId, projectRoot, write }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     migrateFlowConfig({
       projectRoot: context.projectRoot,
       write: write === true,
@@ -304,15 +319,19 @@ function registerReadTools(server: McpServer, projectManager: FlowMcpProjectMana
     description: "Verify the configured workflow ledger.",
     inputSchema: projectScopeSchema,
     annotations: { readOnlyHint: true },
-  }, async ({ projectId, projectRoot }) => withProject(projectManager, { projectId, projectRoot }, async (context) => {
+  }, async ({ projectId, projectRoot }) => {
+    const { project, context } = await projectManager.resolveProject({ projectId, projectRoot });
     const issues = await context.workflowLedger.listIssues(1);
     return result({
       ok: true,
       backend: context.workflowLedgerPath === "<postgres>" ? "postgres" : "sqlite",
       path: context.workflowLedgerPath,
       sampleIssueCount: issues.length,
+      projectId: project.id,
+      projectRoot: project.root,
+      projectName: project.name,
     });
-  }));
+  });
 
   server.registerTool("flow_layout", {
     description: "Read Flow's configured file and directory layout.",
@@ -326,14 +345,14 @@ function registerIssueTools(server: McpServer, projectManager: FlowMcpProjectMan
     description: "Inspect an issue or work item by reference.",
     inputSchema: { ...projectScopeSchema, id: issueRefSchema },
     annotations: { readOnlyHint: true },
-  }, async ({ projectId, projectRoot, id }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ projectId, projectRoot, id }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     context.runtime.inspectIssue(id)
   )));
 
   server.registerTool("flow_issue_select", {
     description: "Select an issue in a Flow session.",
     inputSchema: { ...optionalSessionSchema, ...projectScopeSchema, id: issueRefSchema },
-  }, async ({ sessionId, projectId, projectRoot, id }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ sessionId, projectId, projectRoot, id }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     withSession(context, sessionId, async (activeSessionId) =>
       context.runtime.selectIssue(activeSessionId, await resolveIssue(context, id))
     )
@@ -348,7 +367,7 @@ function registerIssueTools(server: McpServer, projectManager: FlowMcpProjectMan
     }),
   }, async (rawInput) => {
     const input = rawInput as IssueIntakeToolInput;
-    return result(await withProject(projectManager, input, (context) =>
+    return result(await withScopedProjectResult(projectManager, input, (context) =>
       withSession(context, input.sessionId, (activeSessionId) =>
         context.runtime.intakeIssue(activeSessionId, {
           projectKey: input.projectKey,
@@ -370,7 +389,7 @@ function registerIssueTools(server: McpServer, projectManager: FlowMcpProjectMan
   server.registerTool("flow_issue_create", {
     description: "Create tracked work through the configured issue tracker.",
     inputSchema: createIssueInputSchema(),
-  }, async (input) => result(await withProject(projectManager, input, (context) =>
+  }, async (input) => result(await withScopedProjectResult(projectManager, input, (context) =>
     withSession(context, input.sessionId, (activeSessionId) =>
       context.runtime.createIssue(activeSessionId, {
         projectKey: input.projectKey,
@@ -393,7 +412,7 @@ function registerIssueTools(server: McpServer, projectManager: FlowMcpProjectMan
       id: issueRefSchema,
       repoKeys: z.array(z.string().min(1)).optional(),
     },
-  }, async ({ sessionId, projectId, projectRoot, id, repoKeys }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ sessionId, projectId, projectRoot, id, repoKeys }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     withSession(context, sessionId, (activeSessionId) =>
       context.runtime.routeIssue(activeSessionId, id, repoKeys ?? [])
     )
@@ -407,7 +426,7 @@ function registerIssueTools(server: McpServer, projectManager: FlowMcpProjectMan
       limit: z.number().int().positive().optional(),
       ids: z.array(z.string().min(1)).optional(),
     },
-  }, async ({ projectId, projectRoot, apply, limit, ids }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ projectId, projectRoot, apply, limit, ids }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     context.runtime.triageIssues({
       dryRun: apply === true ? false : true,
       apply: apply === true,
@@ -425,7 +444,7 @@ function registerIssueTools(server: McpServer, projectManager: FlowMcpProjectMan
       repoKey: z.string().optional(),
       baseBranch: z.string().optional(),
     },
-  }, async ({ sessionId, projectId, projectRoot, id, repoKey, baseBranch }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ sessionId, projectId, projectRoot, id, repoKey, baseBranch }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     withSession(context, sessionId, (activeSessionId) =>
       context.runtime.prepareWorkspace(activeSessionId, id, { repoKey, baseBranch })
     )
@@ -441,7 +460,7 @@ function registerIssueTools(server: McpServer, projectManager: FlowMcpProjectMan
       worktreePath: z.string().min(1),
       baseBranch: z.string().optional(),
     },
-  }, async ({ sessionId, projectId, projectRoot, id, repoKey, worktreePath, baseBranch }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ sessionId, projectId, projectRoot, id, repoKey, worktreePath, baseBranch }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     withSession(context, sessionId, (activeSessionId) =>
       context.runtime.adoptWorkspace(activeSessionId, id, { repoKey, worktreePath, baseBranch })
     )
@@ -461,7 +480,7 @@ function registerIssueTools(server: McpServer, projectManager: FlowMcpProjectMan
       prefix: z.string().optional(),
       select: z.boolean().optional(),
     },
-  }, async (input) => result(await withProject(projectManager, input, (context) =>
+  }, async (input) => result(await withScopedProjectResult(projectManager, input, (context) =>
     withSession(context, input.sessionId, (activeSessionId) =>
       context.runtime.adoptBranch(activeSessionId, {
         issueRef: input.issueRef,
@@ -486,7 +505,7 @@ function registerWorkflowTools(server: McpServer, projectManager: FlowMcpProject
       id: issueRefSchema,
       approveConfirmationId: z.string().optional(),
     },
-  }, async ({ sessionId, projectId, projectRoot, id, approveConfirmationId }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ sessionId, projectId, projectRoot, id, approveConfirmationId }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     selectThen(context, sessionId, id, (activeSessionId) =>
       context.runtime.advanceIssue(activeSessionId, approveConfirmationId)
     )
@@ -502,11 +521,11 @@ function registerWorkflowTools(server: McpServer, projectManager: FlowMcpProject
     },
     annotations: { readOnlyHint: true },
   }, async ({ sessionId, projectId, projectRoot, id, strict }) => {
-    const diagnosis = await withProject(projectManager, { projectId, projectRoot }, (context) =>
+    const diagnosis = await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
       withSession(context, sessionId, (activeSessionId) =>
         context.runtime.diagnoseIssue(activeSessionId, id)
       )
-    );
+    ) as { status: string; findings: Array<{ severity: string }>; issueRef: string };
     if (strict === true && doctorStrictFailure(diagnosis)) {
       throw new Error(`Flow doctor reported ${diagnosis.status} status for ${diagnosis.issueRef}.`);
     }
@@ -517,7 +536,7 @@ function registerWorkflowTools(server: McpServer, projectManager: FlowMcpProject
     description: "Summarize current Flow handoff state.",
     inputSchema: { ...optionalSessionSchema, ...projectScopeSchema },
     annotations: { readOnlyHint: true },
-  }, async ({ sessionId, projectId, projectRoot }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ sessionId, projectId, projectRoot }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     withSession(context, sessionId, (activeSessionId) =>
       context.runtime.summarizeHandoff(activeSessionId)
     )
@@ -532,7 +551,7 @@ function registerWorkflowTools(server: McpServer, projectManager: FlowMcpProject
       adopter: z.string().optional(),
       summary: z.string().optional(),
     },
-  }, async ({ sessionId, projectId, projectRoot, id, adopter, summary }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ sessionId, projectId, projectRoot, id, adopter, summary }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     selectThen(context, sessionId, id, (activeSessionId) =>
       context.runtime.adoptPendingLocalThread(activeSessionId, { adopter, summary })
     )
@@ -547,7 +566,7 @@ function registerWorkflowTools(server: McpServer, projectManager: FlowMcpProject
       repoKey: z.string().optional(),
       force: z.boolean().optional(),
     },
-  }, async ({ sessionId, projectId, projectRoot, id, repoKey, force }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ sessionId, projectId, projectRoot, id, repoKey, force }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     selectThen(context, sessionId, id, (activeSessionId) =>
       context.runtime.publishWorkspace(activeSessionId, { issueRef: id, repoKey, force: force === true })
     )
@@ -565,7 +584,7 @@ function registerWorkflowTools(server: McpServer, projectManager: FlowMcpProject
       draft: z.boolean().optional(),
       baseBranch: z.string().optional(),
     },
-  }, async (input) => result(await withProject(projectManager, input, (context) =>
+  }, async (input) => result(await withScopedProjectResult(projectManager, input, (context) =>
     selectThen(context, input.sessionId, input.id, (activeSessionId) =>
       context.runtime.openPullRequest(activeSessionId, {
         issueRef: input.id,
@@ -587,7 +606,7 @@ function registerWorkflowTools(server: McpServer, projectManager: FlowMcpProject
       repoKey: z.string().optional(),
       push: z.boolean().optional(),
     },
-  }, async ({ sessionId, projectId, projectRoot, id, repoKey, push }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ sessionId, projectId, projectRoot, id, repoKey, push }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     selectThen(context, sessionId, id, (activeSessionId) =>
       context.runtime.syncWorkspaceBranch(activeSessionId, { issueRef: id, repoKey, push: push !== false })
     )
@@ -596,7 +615,7 @@ function registerWorkflowTools(server: McpServer, projectManager: FlowMcpProject
   server.registerTool("flow_cleanup_workspaces", {
     description: "Prune merged issue worktrees.",
     inputSchema: { ...optionalSessionSchema, ...projectScopeSchema, id: issueRefSchema },
-  }, async ({ sessionId, projectId, projectRoot, id }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ sessionId, projectId, projectRoot, id }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     selectThen(context, sessionId, id, (activeSessionId) =>
       context.runtime.cleanupIssueWorkspaces(activeSessionId, id)
     )
@@ -620,7 +639,7 @@ function registerWorkflowTools(server: McpServer, projectManager: FlowMcpProject
       handoffPrompt: z.string().optional(),
       evidenceCandidate: z.string().optional(),
     },
-  }, async (input) => result(await withProject(projectManager, input, (context) =>
+  }, async (input) => result(await withScopedProjectResult(projectManager, input, (context) =>
     selectThen(context, input.sessionId, input.id, (activeSessionId) =>
       context.runtime.recordLocalThreadResult(activeSessionId, {
         issueRef: input.id,
@@ -654,7 +673,7 @@ function registerWorkflowTools(server: McpServer, projectManager: FlowMcpProject
       checksPending: z.boolean().optional(),
       reviewDecision: z.string().optional(),
     },
-  }, async (input) => result(await withProject(projectManager, input, (context) =>
+  }, async (input) => result(await withScopedProjectResult(projectManager, input, (context) =>
     selectThen(context, input.sessionId, input.id, (activeSessionId) =>
       context.runtime.recordPullRequest(activeSessionId, {
         issueRef: input.id,
@@ -680,7 +699,7 @@ function registerWorkflowTools(server: McpServer, projectManager: FlowMcpProject
       source: z.string().optional(),
       criteria: z.array(z.string()).optional(),
     },
-  }, async ({ sessionId, projectId, projectRoot, id, summary, source, criteria }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ sessionId, projectId, projectRoot, id, summary, source, criteria }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     selectThen(context, sessionId, id, (activeSessionId) =>
       context.runtime.recordEvidence(activeSessionId, {
         issueRef: id,
@@ -700,7 +719,7 @@ function registerWorkflowTools(server: McpServer, projectManager: FlowMcpProject
       disposition: z.enum(["updated", "not_needed", "needed"]).optional(),
       summary: z.string().min(1),
     },
-  }, async ({ sessionId, projectId, projectRoot, id, disposition, summary }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ sessionId, projectId, projectRoot, id, disposition, summary }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     selectThen(context, sessionId, id, (activeSessionId) =>
       context.runtime.recordDocumentation(activeSessionId, {
         issueRef: id,
@@ -728,7 +747,7 @@ function registerWorkflowTools(server: McpServer, projectManager: FlowMcpProject
     const docsText = documentationSummary ?? summary;
     if (!evidenceText) throw new Error("flow_record_acceptance requires evidenceSummary or summary.");
     if (!docsText) throw new Error("flow_record_acceptance requires documentationSummary or summary.");
-    return result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+    return result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
       selectThen(context, sessionId, id, async (activeSessionId) => {
         const evidence = await context.runtime.recordEvidence(activeSessionId, {
           issueRef: id,
@@ -754,7 +773,7 @@ function registerWorkflowTools(server: McpServer, projectManager: FlowMcpProject
       id: issueRefSchema,
     },
     annotations: { readOnlyHint: true },
-  }, async ({ projectId, projectRoot, type, id }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ projectId, projectRoot, type, id }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     context.runtime.observeFlowSubject({ type: type ?? "issue", ref: id })
   )));
 }
@@ -764,7 +783,7 @@ function registerReviewTools(server: McpServer, projectManager: FlowMcpProjectMa
     description: "Review local readiness state for an issue.",
     inputSchema: { ...optionalSessionSchema, ...projectScopeSchema, id: issueRefSchema },
     annotations: { readOnlyHint: true },
-  }, async ({ sessionId, projectId, projectRoot, id }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ sessionId, projectId, projectRoot, id }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     selectThen(context, sessionId, id, (activeSessionId) =>
       context.runtime.reviewLocal(activeSessionId, id)
     )
@@ -779,7 +798,7 @@ function registerReviewTools(server: McpServer, projectManager: FlowMcpProjectMa
       repo: z.string().optional(),
       post: z.boolean().optional(),
     },
-  }, async ({ sessionId, projectId, projectRoot, id, repo, post }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ sessionId, projectId, projectRoot, id, repo, post }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     selectThen(context, sessionId, id, (activeSessionId) =>
       context.runtime.reviewCodeReview(activeSessionId, id, { repo, post: post === true })
     )
@@ -791,7 +810,7 @@ function registerWorkJobTools(server: McpServer, projectManager: FlowMcpProjectM
     description: "List typed work jobs for a session or issue.",
     inputSchema: { ...optionalSessionSchema, ...projectScopeSchema, issueRef: z.string().optional() },
     annotations: { readOnlyHint: true },
-  }, async ({ sessionId, projectId, projectRoot, issueRef }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ sessionId, projectId, projectRoot, issueRef }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     withSession(context, sessionId, (activeSessionId) =>
       context.runtime.listWorkJobs(activeSessionId, issueRef)
     )
@@ -805,7 +824,7 @@ function registerWorkJobTools(server: McpServer, projectManager: FlowMcpProjectM
       jobId: z.string().min(1),
       executor: workerExecutorSchema,
     },
-  }, async ({ sessionId, projectId, projectRoot, jobId, executor }) => result(await withProject(projectManager, { projectId, projectRoot }, (context) =>
+  }, async ({ sessionId, projectId, projectRoot, jobId, executor }) => result(await withScopedProjectResult(projectManager, { projectId, projectRoot }, (context) =>
     withSession(context, sessionId, (activeSessionId) =>
       context.runtime.claimWorkJob(activeSessionId, jobId, executor)
     )
@@ -825,7 +844,7 @@ function registerWorkJobTools(server: McpServer, projectManager: FlowMcpProjectM
       evidence: z.array(z.string()).optional(),
       completedAt: z.string().optional(),
     },
-  }, async (input) => result(await withProject(projectManager, input, (context) =>
+  }, async (input) => result(await withScopedProjectResult(projectManager, input, (context) =>
     withSession(context, input.sessionId, (activeSessionId) =>
       context.runtime.recordWorkJobResult(activeSessionId, {
         jobId: input.jobId,
@@ -865,11 +884,20 @@ async function withProject<T>(
   return run(context);
 }
 
+async function withScopedProjectResult<T>(
+  projectManager: FlowMcpProjectManager,
+  input: ProjectScopedInput,
+  run: (context: FlowMcpContext) => Promise<T>,
+): Promise<unknown> {
+  const { project, context } = await projectManager.resolveProject(input);
+  return addProjectScope(project, await run(context));
+}
+
 async function readProjectWorkItems(
   projectManager: FlowMcpProjectManager,
   input: ProjectScopedInput & { allProjects?: boolean; limit?: number },
   read: (context: FlowMcpContext, limit: number) => Promise<WorkItem[]>,
-): Promise<WorkItem[] | { projects: Array<{ project: FlowMcpProjectRecord; value: WorkItem[] }>; value: Array<WorkItem & { projectId: string; projectRoot: string; projectName: string }> }> {
+): Promise<unknown> {
   const limit = input.limit ?? 10;
   if (input.allProjects === true) {
     const projects = await Promise.all((await projectManager.projectContexts()).map(async ({ project, context }) => ({
@@ -886,8 +914,18 @@ async function readProjectWorkItems(
       }))),
     };
   }
-  const { context } = await projectManager.resolveProject(input);
-  return read(context, limit);
+  const { project, context } = await projectManager.resolveProject(input);
+  return addProjectScope(project, await read(context, limit));
+}
+
+function addProjectScope(project: FlowMcpProjectRecord, value: unknown): unknown {
+  const scope = {
+    projectId: project.id,
+    projectRoot: project.root,
+    projectName: project.name,
+  };
+  if (isRecord(value)) return { ...value, ...scope };
+  return { value, ...scope };
 }
 
 async function selectThen<T>(
