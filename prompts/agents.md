@@ -13,6 +13,8 @@ project under work, dogfood Flow rather than treating it as a passive codebase.
 - Core Flow commands are deterministic bookkeeping: issue create/select, workspace
   prepare/adopt, result/evidence/documentation/PR recording, and bounded state
   transitions. Use these directly.
+- For consumer-reported Flow problems, use `flow_issue_report` so the report
+  keeps source context and does not claim active work by default.
 - For simple issue capture, use `flow_issue_create` directly. Do not run intake
   review or semantic dedupe unless specifically needed.
 - Prepare a Flow workspace or adopt the current workspace through Flow before

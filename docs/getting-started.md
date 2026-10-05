@@ -60,6 +60,8 @@ Pass `projectId` or `projectRoot` for project-specific work, or call
 
 Capture or select work:
 
+- Use `flow_issue_report` when an external consumer needs to file a bug or
+  supportable issue into Flow without claiming it as active work.
 - Use `flow_issue_create` for simple issue capture.
 - Use `flow_issue_intake` when you want dedupe, routing, or review before
   creation.

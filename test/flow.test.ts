@@ -1070,6 +1070,48 @@ test("Flow MCP server works with only git available on PATH", async () => {
   }, { env });
 });
 
+test("Flow MCP reports consumer issues without selecting them by default", async () => {
+  const root = await mkdtemp(join(tmpdir(), "flow-consumer-report-"));
+  await execFileAsync("git", ["init"], { cwd: root });
+
+  await withFlowMcp(root, async (client) => {
+    const tools = await client.listTools();
+    const toolNames = tools.tools.map((tool) => tool.name);
+    assert.ok(toolNames.includes("flow_issue_report"));
+
+    await callFlowTool(client, "flow_bootstrap", {});
+    const reported = await callFlowTool(client, "flow_issue_report", {
+      title: "MCP project default is confusing",
+      summary: "Consumer cannot tell which registered project will receive evidence.",
+      description: "A consumer hit ambiguous project behavior while using Flow MCP from another repo.",
+      issueType: "Bug",
+      branchKind: "bug",
+      repoKeys: ["main"],
+      source: "Property Pilot",
+      sourceProjectRoot: "C:\\workspace\\property-pilot",
+      observedBehavior: "An unscoped mutating MCP call could target the wrong project.",
+      expectedBehavior: "Flow should capture enough context for maintainers to triage the report.",
+      stepsToReproduce: [
+        "Register two Flow projects in one MCP server.",
+        "Call a mutating project tool without explicit project scope.",
+      ],
+      impact: "Evidence can land in the wrong ledger.",
+    });
+
+    assert.match(String(reported.ref), /^FLOW-CONSUMER-REPORT-[A-Z0-9]+-\d+$/);
+    assert.equal(reported.title, "MCP project default is confusing");
+    assert.equal(reported.state, "queued");
+    assert.deepEqual(reported.repoKeys, ["main"]);
+    const metadata = reported.metadata as Record<string, unknown>;
+    assert.equal(metadata.issueType, "Bug");
+    assert.equal(metadata.branchKind, "bug");
+
+    const viewed = await callFlowTool(client, "flow_issue_view", { id: reported.ref });
+    assert.equal(viewed.ref, reported.ref);
+    assert.equal(viewed.state, "queued");
+  });
+});
+
 test("Flow MCP server honors FLOW_ROOT when invoked from another directory", async () => {
   const root = await mkdtemp(join(tmpdir(), "flow-root-env-"));
   const otherCwd = await mkdtemp(join(tmpdir(), "flow-root-env-cwd-"));
@@ -1341,6 +1383,7 @@ test("Flow MCP tool discovery exposes core workflow tools only", async () => {
     assert.ok(names.includes("flow_review_code_review"));
     assert.ok(names.includes("flow_workflow_advance"));
     assert.ok(names.includes("flow_workflow_audit"));
+    assert.ok(names.includes("flow_issue_report"));
     assert.ok(!names.includes("flow_autoflow"));
     assert.ok(!names.includes("flow_runtime"));
   });

@@ -54,6 +54,7 @@ Core tools:
 - `flow_project_add`
 - `flow_queue`
 - `flow_issue_view`
+- `flow_issue_report`
 - `flow_issue_create`
 - `flow_issue_triage`
 - `flow_prepare_workspace`

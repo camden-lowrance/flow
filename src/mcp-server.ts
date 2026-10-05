@@ -385,6 +385,36 @@ function registerIssueTools(server: McpServer, projectManager: FlowMcpProjectMan
     )
   )));
 
+  server.registerTool("flow_issue_report", {
+    description: "Report an issue from a Flow consumer through the configured issue tracker.",
+    inputSchema: createIssueInputSchema({
+      source: z.string().optional(),
+      sourceProjectId: z.string().optional(),
+      sourceProjectRoot: z.string().optional(),
+      environment: z.string().optional(),
+      observedBehavior: z.string().optional(),
+      expectedBehavior: z.string().optional(),
+      stepsToReproduce: z.array(z.string().min(1)).optional(),
+      impact: z.string().optional(),
+    }),
+  }, async (rawInput) => {
+    const input = rawInput as IssueReportToolInput;
+    return result(await withProject(projectManager, input, (context) =>
+      withSession(context, input.sessionId, (activeSessionId) =>
+        context.runtime.createIssue(activeSessionId, {
+          projectKey: input.projectKey,
+          issueType: input.issueType ?? "Bug",
+          branchKind: input.branchKind,
+          title: input.title,
+          summary: input.summary,
+          description: consumerIssueReportBody(input),
+          repoKeys: input.repoKeys,
+          select: input.select ?? false,
+        })
+      )
+    ));
+  });
+
   server.registerTool("flow_issue_route", {
     description: "Record the repos an issue should touch.",
     inputSchema: {
@@ -1038,11 +1068,82 @@ type IssueCreateToolInput = {
   select?: boolean;
 };
 
+type IssueReportToolInput = IssueCreateToolInput & {
+  source?: string;
+  sourceProjectId?: string;
+  sourceProjectRoot?: string;
+  environment?: string;
+  observedBehavior?: string;
+  expectedBehavior?: string;
+  stepsToReproduce?: string[];
+  impact?: string;
+};
+
 type IssueIntakeToolInput = IssueCreateToolInput & {
   apply?: boolean;
   dryRun?: boolean;
   review?: boolean;
 };
+
+function consumerIssueReportBody(input: IssueReportToolInput): string {
+  const details = [
+    consumerReportLine("Source", input.source),
+    consumerReportLine("Source project id", input.sourceProjectId),
+    consumerReportLine("Source project root", input.sourceProjectRoot),
+    consumerReportLine("Environment", input.environment),
+    consumerReportLine("Observed behavior", input.observedBehavior),
+    consumerReportLine("Expected behavior", input.expectedBehavior),
+    consumerReportLine("Impact", input.impact),
+  ].filter(Boolean);
+  const steps = input.stepsToReproduce?.map((step) => step.trim()).filter(Boolean) ?? [];
+  const files = input.repoKeys?.length ? input.repoKeys.map((repoKey) => `- ${repoKey}`).join("\n") : "- Not specified.";
+  return [
+    "## Problem",
+    input.description?.trim() || input.summary.trim(),
+    "",
+    "## Report context",
+    details.length ? details.join("\n") : "- Not specified.",
+    "",
+    "## Steps to reproduce",
+    steps.length ? steps.map((step) => `- ${step}`).join("\n") : "- Not specified.",
+    "",
+    "## Why now",
+    "Reported by a Flow consumer through MCP.",
+    "",
+    "## Scope",
+    input.summary.trim(),
+    "",
+    "## Out of scope",
+    "Not specified.",
+    "",
+    "## Files to inspect first",
+    files,
+    "",
+    "## Acceptance criteria",
+    "- Reported behavior is understood or reproduced.",
+    "- Flow captures enough context for a maintainer to triage the issue.",
+    "",
+    "## Verification commands",
+    "- npm run check",
+    "",
+    "## Dependencies",
+    "- None known.",
+    "",
+    "## Concurrency notes",
+    "- Check related open issues before editing shared files.",
+    "",
+    "## Priority",
+    "priority-p2",
+    "",
+    "## Lane",
+    "Not specified.",
+  ].join("\n");
+}
+
+function consumerReportLine(label: string, value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized ? `- ${label}: ${normalized}` : undefined;
+}
 
 type TerminalWorkerStatus = Extract<WorkerStatus, "succeeded" | "blocked" | "failed">;
 

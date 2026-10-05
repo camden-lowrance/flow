@@ -14,6 +14,9 @@ handoff, closeout, merge, and provider verification.
 Prefer registered Flow MCP tools. If tool bindings are missing, stop and report
 that Flow MCP is not connected.
 
+Use `flow_issue_report` for consumer-reported Flow problems so the report keeps
+source context and does not claim active work by default.
+
 Do not write provider, ledger, sprint, or git workflow state directly unless the
 requester approves recovery after a Flow failure.
 

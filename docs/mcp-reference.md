@@ -46,11 +46,18 @@ the default project registered at server startup. `flow_queue` and
 | `flow_issue_select` | Select an issue in a Flow session. |
 | `flow_issue_intake` | Analyze issue creation input and optionally review/apply. |
 | `flow_issue_create` | Create tracked work through the configured issue tracker. |
+| `flow_issue_report` | File a consumer issue through the configured issue tracker without selecting it by default. |
 | `flow_issue_route` | Record the repos an issue should touch. |
 | `flow_issue_triage` | Analyze open issues and propose cleanup actions. |
 | `flow_prepare_workspace` | Prepare a git worktree for an issue. |
 | `flow_adopt_workspace` | Record an existing worktree as the issue workspace. |
 | `flow_adopt_branch` | Adopt the current branch/worktree as Flow-tracked work. |
+
+Use `flow_issue_report` for consumer bug reports or supportable product
+feedback. It accepts the same core fields as `flow_issue_create` plus source,
+environment, observed/expected behavior, reproduction steps, and impact fields.
+The tool formats that context into the issue body and defaults `select` to
+`false`, so a reporting process does not claim the issue as active work.
 
 ## Workflow
 

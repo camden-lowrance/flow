@@ -19,6 +19,8 @@ Rules:
 - Do not write issue tracker, code review, ledger, sprint, or git workflow state
   directly unless the requester approves direct recovery after a Flow failure.
 - Treat the workflow ledger as durable workflow memory.
+- For consumer-reported Flow problems, use `flow_issue_report` so the report
+  keeps source context and does not claim active work by default.
 - For simple issue capture, use `flow_issue_create` directly. Do not run intake
   review or semantic dedupe unless specifically needed.
 - Record handoff results, evidence, documentation, PR state, and review
