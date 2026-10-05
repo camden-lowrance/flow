@@ -25,7 +25,7 @@ Use manifests as the authoritative command shape for agents.
 - `bootstrap`: create starter Flow config.
 - `config`: validate, explain, or migrate config.
 - `ledger`: verify the active SQL workflow ledger.
-- `issue`: issue view, create, route, and workspace adoption.
+- `issue`: issue view, raise/create, route, and workspace adoption.
 - `workflow`: readiness, handoff, evidence, docs, result, and closeout.
 - `autoflow`: experimental app-layer Autoflow control.
 - `review`: local or code review status.
@@ -45,7 +45,23 @@ Issue creation supports structured intake fields:
 
 ```bash
 flow '{"op":"issue","mode":"intake","dryRun":true,"review":true,"summary":"Add SQL ledger docs","issueType":"Task"}'
+flow '{"op":"issue","mode":"raise","title":"External sync failed","summary":"Consumer system could not sync invoices","description":"Invoice batch 42 failed after three retries.","issueType":"Bug","repoKeys":["flow"],"select":false}'
 flow '{"op":"issue","mode":"create","summary":"Add SQL ledger docs","issueType":"Task","repoKeys":["flow"]}'
+```
+
+External consumers should prefer `mode:"raise"` for new tracked work. It uses
+the same validated issue-creation path as `create`, reads adapter behavior from
+`.flow/config.yaml`, and returns the created issue as JSON. Supported fields are
+`title`, `summary`, `description`, `issueType`, `repoKeys`, `branchKind`
+(`bug` or `feature`), and `select`; set `select:false` when the caller is only
+filing the issue and not claiming it as the active Flow session.
+
+On PowerShell, pipe the JSON body through stdin to avoid shell quoting issues:
+
+```powershell
+@'
+{"op":"issue","mode":"raise","title":"External sync failed","summary":"Consumer system could not sync invoices","description":"Invoice batch 42 failed after three retries.","issueType":"Bug","repoKeys":["flow"],"select":false}
+'@ | flow
 ```
 
 ## Workflow

@@ -213,6 +213,7 @@ async function handleIssueRequest(request: Record<string, unknown>): Promise<unk
         review: request.review === true,
       });
     case "create":
+    case "raise":
       return runtime.createIssue(activeSessionId, {
         projectKey: optionalString(request, "projectKey"),
         issueType: parseJiraIssueType(optionalString(request, "issueType") ?? "Bug"),
@@ -241,7 +242,7 @@ async function handleIssueRequest(request: Record<string, unknown>): Promise<unk
         baseBranch: optionalString(request, "baseBranch"),
       });
     default:
-      throw badMode("issue", mode, ["view", "select", "intake", "create", "route", "adoptBranch", "adoptWorkspace", "triage"]);
+      throw badMode("issue", mode, ["view", "select", "intake", "create", "raise", "route", "adoptBranch", "adoptWorkspace", "triage"]);
   }
 }
 
@@ -396,7 +397,7 @@ function flowManifest(target?: string) {
         bootstrap: "Create Flow config from repo metadata.",
         config: "Validate or explain Flow config.",
         ledger: "Verify workflow ledger.",
-        issue: "Inspect, create, select, or adopt issue/workspace state through the configured issue tracker.",
+        issue: "Inspect, raise, create, select, or adopt issue/workspace state through the configured issue tracker.",
         workflow: "Advance, audit, record, or observe workflow state.",
         review: "Provider-neutral review of local readiness or external code review state.",
         runtime: "Call a raw Work Runtime method by name.",
@@ -425,22 +426,23 @@ function flowManifest(target?: string) {
         "If the user gives an issue id, call issue view first.",
         "Use queue/backlog for active configured-tracker work discovery.",
         "Use intake with review:true before create when semantic dedupe is needed.",
-        "Use create only when the user asks to create new tracked work.",
+        "Use raise/create when an external consumer asks to create new tracked work.",
         "Use adoptBranch/adoptWorkspace for local work that should stay Flow-local until published.",
         "Use triage to analyze open issues and propose cleanup actions.",
       ],
-      modes: ["view", "select", "intake", "create", "route", "adoptBranch", "adoptWorkspace", "triage"],
+      modes: ["view", "select", "intake", "create", "raise", "route", "adoptBranch", "adoptWorkspace", "triage"],
       examples: [
         { op: "issue", mode: "view", id: issueRefExample() },
         { op: "issue", mode: "select", id: "FLOW-123" },
         { op: "issue", mode: "intake", dryRun: true, review: true, summary: "Add SQL workflow ledger", issueType: "Task" },
         { op: "issue", mode: "intake", apply: true, summary: "Add SQL workflow ledger", issueType: "Task" },
+        { op: "issue", mode: "raise", title: "External sync failed", summary: "Consumer system could not sync invoices.", issueType: "Bug", repoKeys: ["main"], select: false },
         { op: "issue", mode: "route", id: "FLOW-123", repoKeys: ["main"] },
         { op: "issue", mode: "adoptWorkspace", id: "FLOW-123", repoKey: "main", worktreePath: "/path/to/worktree" },
         { op: "issue", mode: "triage", dryRun: true, limit: 50 },
         { op: "issue", mode: "triage", apply: true, ids: ["GH-123", "GH-124"] },
       ],
-      id: "Required issue/work item id for existing work items; create/intake/adoptBranch may omit id to allocate one. Triage mode does not require id.",
+      id: "Required issue/work item id for existing work items; raise/create/intake/adoptBranch may omit id to allocate one. Triage mode does not require id.",
     };
   }
   if (target === "review") {

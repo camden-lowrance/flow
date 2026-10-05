@@ -53,9 +53,14 @@ one JSON response to stdout.
 ```bash
 flow '{"op":"manifest"}'
 flow '{"op":"queue","limit":10}'
+flow '{"op":"issue","mode":"raise","title":"External sync failed","summary":"Consumer system could not sync invoices","issueType":"Bug","repoKeys":["flow"],"select":false}'
 flow '{"op":"issue","mode":"view","id":"GH-123"}'
 flow '{"op":"workflow","mode":"doctor","id":"GH-123"}'
 ```
+
+Use `issue` `mode:"raise"` when an external consumer only needs to file tracked
+work into Flow. Set `select:false` unless that process should claim the issue as
+the active session.
 
 Prepare and hand off work:
 

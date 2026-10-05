@@ -1093,7 +1093,7 @@ test("Flow CLI core works with only git available on PATH", async () => {
 
   const manifest = await callFlow({ op: "manifest", target: "issue" });
   const issueTrackerManifest = manifest.issueTracker as Record<string, unknown>;
-  assert.deepEqual(manifest.modes, ["view", "select", "intake", "create", "route", "adoptBranch", "adoptWorkspace", "triage"]);
+  assert.deepEqual(manifest.modes, ["view", "select", "intake", "create", "raise", "route", "adoptBranch", "adoptWorkspace", "triage"]);
   assert.equal(issueTrackerManifest.type, "local");
   assert.match(String(issueTrackerManifest.refHint), /^FLOW-GIT-ONLY-[A-Z0-9]+-123$/);
   assert.equal(issueTrackerManifest.sourceOfTruth, ".flow/config.yaml");
@@ -1117,6 +1117,47 @@ test("Flow CLI core works with only git available on PATH", async () => {
   const viewed = await callFlow({ op: "issue", mode: "view", id: issue.ref });
   assert.equal(viewed.ref, issue.ref);
   assert.equal(viewed.title, "Git-only Flow core");
+});
+
+test("Flow CLI raises issues for external consumer requests", async () => {
+  const root = await mkdtemp(join(tmpdir(), "flow-consumer-raise-"));
+  await execFileAsync("git", ["init"], { cwd: root });
+  const flowCli = join(process.cwd(), ".tmp", "test", "src", "flow.js");
+
+  const callFlow = async (body: Record<string, unknown>) => {
+    const { stdout } = await execFileAsync(process.execPath, [flowCli, JSON.stringify(body)], {
+      cwd: root,
+      maxBuffer: 20 * 1024 * 1024,
+    });
+    const parsed = JSON.parse(stdout) as { ok?: boolean; result?: unknown; error?: unknown };
+    if (parsed.ok === false) throw new Error(`Flow CLI failed: ${JSON.stringify(parsed.error)}`);
+    return parsed.result as Record<string, unknown>;
+  };
+
+  await callFlow({ op: "bootstrap", storage: "repo-tracked" });
+
+  const raised = await callFlow({
+    op: "issue",
+    mode: "raise",
+    title: "External sync failed",
+    summary: "Consumer system could not sync invoice batch 42.",
+    description: "The consumer should be able to raise this through the public JSON CLI contract.",
+    issueType: "Bug",
+    repoKeys: ["main"],
+    branchKind: "bug",
+    select: false,
+  });
+
+  assert.match(String(raised.ref), /^FLOW-CONSUMER-RAISE-[A-Z0-9]+-\d+$/);
+  assert.equal(raised.title, "External sync failed");
+  assert.deepEqual(raised.repoKeys, ["main"]);
+  const metadata = raised.metadata as Record<string, unknown>;
+  assert.equal(metadata.issueType, "Bug");
+  assert.equal(metadata.branchKind, "bug");
+
+  const manifest = await callFlow({ op: "manifest", target: "issue" });
+  assert.equal((manifest.modes as string[]).includes("raise"), true);
+  assert.equal(JSON.stringify(manifest.examples).includes('"mode":"raise"'), true);
 });
 
 test("Flow CLI honors FLOW_ROOT when invoked from another directory", async () => {
